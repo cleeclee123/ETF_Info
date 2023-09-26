@@ -1,6 +1,16 @@
 import requests
 import pandas as pd
 from datetime import datetime
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import http
+import time
+import browser_cookie3
+import os
 
 
 def get_vg_fund_data() -> dict:
@@ -198,6 +208,81 @@ def create_vg_fund_info(parent_dir: str = None) -> pd.DataFrame:
     return filtered_df
 
 
+def latest_download_file(path):
+    os.chdir(path)
+    files = sorted(os.listdir(os.getcwd()), key=os.path.getmtime)
+    if len(files) == 0:
+        return "Empty Directory"
+    newest = files[-1]
+
+    return newest
+
+# can also use this API
+# https://investor.vanguard.com/investment-products/etfs/profile/api/vwob/portfolio-holding/bond
+# https://investor.vanguard.com/investment-products/etfs/profile/api/vv/portfolio-holding/stock
+
+def get_portfolio_data(ticker: str, raw_path: str, clean_path: str):
+    url = f"https://advisors.vanguard.com/investments/products/{ticker}"
+
+    options = webdriver.ChromeOptions()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--ignore-certificate-errors")
+    options.add_experimental_option("excludeSwitches", ["enable-logging"])
+    prefs = {
+        "profile.default_content_settings.popups": 0,
+        "download.default_directory": raw_path,
+        "download.prompt_for_download": False,
+        "download.directory_upgrade": True,
+    }
+    options.add_experimental_option("prefs", prefs)
+
+    with webdriver.Chrome(
+        service=ChromeService(ChromeDriverManager().install()), options=options
+    ) as driver:
+        driver.get(url)
+        full_url = driver.current_url + "#portfolio"
+        driver.get(full_url)
+
+        data_button_xpath = "/html/body/div[1]/div[1]/div[1]/article/div[3]/section[4]/div/div/section/div[2]/div[1]/button"
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, data_button_xpath))
+        )
+        driver.find_element(By.XPATH, data_button_xpath).click()
+
+        data_as_of_date_xpath = "/html/body/div[1]/div[1]/div[1]/article/div[3]/section[4]/div/div/section/div[2]/div[1]/p"
+        as_of_date_raw = (
+            driver.find_element(By.XPATH, data_as_of_date_xpath).text.split(" ").pop()
+        )
+        date_obj = datetime.strptime(as_of_date_raw, "%m/%d/%Y")
+        formatted_date_str = date_obj.strftime("%m-%d-%Y")
+
+        time.sleep(2)
+
+        output_file_name = latest_download_file(raw_path)
+        renamed_output_file = f"{formatted_date_str}_{ticker}_holdings_data_raw.csv"
+        os.rename(
+            f"{raw_path}\{output_file_name}", f"{raw_path}\{renamed_output_file}"
+        )
+        clean_vg_holdings_data(renamed_output_file, formatted_date_str, ticker, clean_path)
+
+
+def clean_vg_holdings_data(raw_path: str, as_of_date: str, ticker: str, clean_path: str):
+    df = pd.read_csv(filepath_or_buffer=raw_path, on_bad_lines="skip", skiprows=7)
+    df = df.iloc[:, 1:]
+    df = df.dropna(subset=['HOLDINGS', 'TICKER', 'SEDOL', 'SHARES'])
+    df.to_excel(f"{clean_path}/{as_of_date}_{ticker}_holdings_data_clean.xlsx", index=False)
+
+
 if __name__ == "__main__":
-    create_vg_fund_info("out")
+    # create_vg_fund_info("out")
     # Input values in the function
+    t0 = time.time()
+
+    raw_path = r"C:\Users\chris\trade\curr_pos\vg_raw_holdings_data"
+    clean_path = r"C:\Users\chris\trade\curr_pos\vg_clean_holdings_data"
+    get_portfolio_data("vde", raw_path, clean_path)
+    
+    t1 = time.time()
+    print("\033[94m {}\033[00m" .format(t1 - t0), " seconds")
