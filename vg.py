@@ -11,6 +11,45 @@ import http
 import time
 import browser_cookie3
 import os
+from enum import Enum
+import aiohttp
+import asyncio
+from typing import List, Union, Dict, Tuple
+import webbrowser
+from dataclasses import dataclass
+
+
+# need to update path
+def get_vanguard_auth(cj: http.cookiejar) -> Tuple[dict, str]:
+    # gets short term cookies
+    webbrowser.open(f"https://advisors.vanguard.com/advisors-home")
+    cookies = {
+        cookie.name: cookie.value for cookie in cj if "vangaurd" in cookie.domain
+    }
+    headers = {
+        "authority": "www.tipranks.com",
+        "method": "GET",
+        "path": "",
+        "scheme": "https",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7,application/json",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "max-age=0",
+        "Cookie": "; ".join([f"{key}={value}" for key, value in cookies.items()]),
+        "Dnt": "1",
+        "Sec-Ch-Ua": '"Chromium";v="116", "Not)A;Brand";v="24", "Google Chrome";v="116"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": "Windows",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+    }
+    os.system("taskkill /im chrome.exe /f")
+
+    return headers
 
 
 def get_vg_fund_data() -> dict:
@@ -217,11 +256,66 @@ def latest_download_file(path):
 
     return newest
 
-# can also use this API
-# https://investor.vanguard.com/investment-products/etfs/profile/api/vwob/portfolio-holding/bond
-# https://investor.vanguard.com/investment-products/etfs/profile/api/vv/portfolio-holding/stock
 
-def get_portfolio_data(ticker: str, raw_path: str, clean_path: str):
+class Asset(Enum):
+    fixed_income = "bond"
+    equity = "stock"
+
+@dataclass
+class ETFInfo:
+    ticker: str
+    asset_class: Asset
+
+
+def get_portfolio_data_api(funds: List[ETFInfo], cj: http.cookiejar, clean_path: str):
+    async def fetch(
+        session: aiohttp.ClientSession, url: str, curr_ticker: str, curr_asset: Asset
+    ) -> Union[List[Dict], None]:
+        try:
+            headers = get_vanguard_auth(cj)
+            headers["path"] = f"/investment-products/etfs/profile/api/{curr_ticker}/portfolio-holding/{curr_asset.value}"
+            async with session.get(url, headers=headers) as response:
+                json_data = await response.json()
+                return json_data
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return {}
+
+    async def get_promises(session: aiohttp.ClientSession) -> List[Dict]:
+        tasks = []
+        for fund in funds:
+            curr_url = f"https://investor.vanguard.com/investment-products/etfs/profile/api/{fund.ticker}/portfolio-holding/{fund.asset_class.value}"
+            task = fetch(session, curr_url, fund.ticker, fund.asset_class)
+            tasks.append(task)
+
+        return await asyncio.gather(*tasks)
+
+    async def run_fetch_all():
+        async with aiohttp.ClientSession() as session:
+            all_data = await get_promises(session)
+            return all_data
+
+    responses = asyncio.run(run_fetch_all())
+    holdings_data = dict(zip([fund.ticker for fund in funds], responses))
+    
+    for ticker in holdings_data:
+        as_of_date_raw = holdings_data[ticker]["asOfDate"]
+        date_obj = datetime.strptime(as_of_date_raw, "%Y-%m-%dT%H:%M:%S%z")
+        formatted_date_str = date_obj.strftime("%m-%d-%Y")
+        wb_name =  f"{clean_path}\{formatted_date_str}_{ticker}_holdings_data_clean.xlsx"
+        
+        try:
+            curr_df = pd.DataFrame(holdings_data[ticker]["fund"]["entity"])
+            curr_df = curr_df.fillna("DNE")
+            curr_df.to_excel(wb_name, index=False)
+        except Exception as e:
+            print(f"Error with {ticker}")
+            print(e)
+            continue
+    
+    return holdings_data
+
+def get_portfolio_data_button(ticker: str, raw_path: str, clean_path: str):
     url = f"https://advisors.vanguard.com/investments/products/{ticker}"
 
     options = webdriver.ChromeOptions()
@@ -262,17 +356,21 @@ def get_portfolio_data(ticker: str, raw_path: str, clean_path: str):
 
         output_file_name = latest_download_file(raw_path)
         renamed_output_file = f"{formatted_date_str}_{ticker}_holdings_data_raw.csv"
-        os.rename(
-            f"{raw_path}\{output_file_name}", f"{raw_path}\{renamed_output_file}"
+        os.rename(f"{raw_path}\{output_file_name}", f"{raw_path}\{renamed_output_file}")
+        clean_vg_holdings_data(
+            renamed_output_file, formatted_date_str, ticker, clean_path
         )
-        clean_vg_holdings_data(renamed_output_file, formatted_date_str, ticker, clean_path)
 
 
-def clean_vg_holdings_data(raw_path: str, as_of_date: str, ticker: str, clean_path: str):
+def clean_vg_holdings_data(
+    raw_path: str, as_of_date: str, ticker: str, clean_path: str
+):
     df = pd.read_csv(filepath_or_buffer=raw_path, on_bad_lines="skip", skiprows=7)
     df = df.iloc[:, 1:]
-    df = df.dropna(subset=['HOLDINGS', 'TICKER', 'SEDOL', 'SHARES'])
-    df.to_excel(f"{clean_path}/{as_of_date}_{ticker}_holdings_data_clean.xlsx", index=False)
+    df = df.dropna(subset=["HOLDINGS", "TICKER", "SEDOL", "SHARES"])
+    df.to_excel(
+        f"{clean_path}/{as_of_date}_{ticker}_holdings_data_clean_filtered.xlsx", index=False
+    )
 
 
 if __name__ == "__main__":
@@ -280,9 +378,20 @@ if __name__ == "__main__":
     # Input values in the function
     t0 = time.time()
 
-    raw_path = r"C:\Users\chris\trade\curr_pos\vg_raw_holdings_data"
+    # raw_path = r"C:\Users\chris\trade\curr_pos\vg_raw_holdings_data"
+    cj = browser_cookie3.chrome()
     clean_path = r"C:\Users\chris\trade\curr_pos\vg_clean_holdings_data"
-    get_portfolio_data("vde", raw_path, clean_path)
+    funds = [
+        ETFInfo(ticker="VOX", asset_class=Asset.equity),
+        ETFInfo(ticker="BNDX", asset_class=Asset.fixed_income),
+        ETFInfo(ticker="VCEB", asset_class=Asset.fixed_income),
+        ETFInfo(ticker="EDV", asset_class=Asset.fixed_income),
+    ]
+    get_portfolio_data_api(funds, cj, clean_path)
     
+    # get_portfolio_data("vtc", raw_path, clean_path)
+
     t1 = time.time()
     print("\033[94m {}\033[00m" .format(t1 - t0), " seconds")
+
+    # print(get_portfolio_data_api("vv", Asset.equity, "helo"))

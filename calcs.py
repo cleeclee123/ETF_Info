@@ -1,5 +1,5 @@
 from scipy.optimize import newton
-
+import math
 
 # Define the function to calculate the present value of the bond
 def bond_price(YTM, face_amount, coupon_yield, market_value, T, n=1):
@@ -33,6 +33,14 @@ def calculate_macaulay_duration(face_amount, coupon_yield, market_value, T, YTM,
     ) / market_value
 
     return macaulay_duration
+
+# need to get benchmark data
+def get_benchmark_data(ticker: str):
+    
+
+def dts_calc(duration: int, spread: int):
+    return abs(duration * spread)
+
 
 
 if __name__ == "__main__":
