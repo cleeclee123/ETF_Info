@@ -7,6 +7,7 @@ from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import NoSuchElementException
 import http
 import time
 import browser_cookie3
@@ -17,6 +18,9 @@ import asyncio
 from typing import List, Union, Dict, Tuple
 import webbrowser
 from dataclasses import dataclass
+import zipfile
+from multiprocessing import Process
+import shutil
 
 
 # need to update path
@@ -261,6 +265,7 @@ class Asset(Enum):
     fixed_income = "bond"
     equity = "stock"
 
+
 @dataclass
 class ETFInfo:
     ticker: str
@@ -273,7 +278,9 @@ def get_portfolio_data_api(funds: List[ETFInfo], cj: http.cookiejar, clean_path:
     ) -> Union[List[Dict], None]:
         try:
             headers = get_vanguard_auth(cj)
-            headers["path"] = f"/investment-products/etfs/profile/api/{curr_ticker}/portfolio-holding/{curr_asset.value}"
+            headers[
+                "path"
+            ] = f"/investment-products/etfs/profile/api/{curr_ticker}/portfolio-holding/{curr_asset.value}"
             async with session.get(url, headers=headers) as response:
                 json_data = await response.json()
                 return json_data
@@ -297,13 +304,13 @@ def get_portfolio_data_api(funds: List[ETFInfo], cj: http.cookiejar, clean_path:
 
     responses = asyncio.run(run_fetch_all())
     holdings_data = dict(zip([fund.ticker for fund in funds], responses))
-    
+
     for ticker in holdings_data:
         as_of_date_raw = holdings_data[ticker]["asOfDate"]
         date_obj = datetime.strptime(as_of_date_raw, "%Y-%m-%dT%H:%M:%S%z")
         formatted_date_str = date_obj.strftime("%m-%d-%Y")
-        wb_name =  f"{clean_path}\{formatted_date_str}_{ticker}_holdings_data_clean.xlsx"
-        
+        wb_name = f"{clean_path}\{formatted_date_str}_{ticker}_holdings_data_clean.xlsx"
+
         try:
             curr_df = pd.DataFrame(holdings_data[ticker]["fund"]["entity"])
             curr_df = curr_df.fillna("DNE")
@@ -312,8 +319,9 @@ def get_portfolio_data_api(funds: List[ETFInfo], cj: http.cookiejar, clean_path:
             print(f"Error with {ticker}")
             print(e)
             continue
-    
+
     return holdings_data
+
 
 def get_portfolio_data_button(ticker: str, raw_path: str, clean_path: str):
     url = f"https://advisors.vanguard.com/investments/products/{ticker}"
@@ -369,29 +377,125 @@ def clean_vg_holdings_data(
     df = df.iloc[:, 1:]
     df = df.dropna(subset=["HOLDINGS", "TICKER", "SEDOL", "SHARES"])
     df.to_excel(
-        f"{clean_path}/{as_of_date}_{ticker}_holdings_data_clean_filtered.xlsx", index=False
+        f"{clean_path}/{as_of_date}_{ticker}_holdings_data_clean_filtered.xlsx",
+        index=False,
     )
 
 
+def get_fund_cash_flow_data(split: int, base_raw_path: str):
+    url = "https://institutional.vanguard.com/etf-cashflow/fundId"
+
+    def get_webdriver_options(raw_path: str):
+        options = webdriver.ChromeOptions()
+        # options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--ignore-certificate-errors")
+        options.add_experimental_option("excludeSwitches", ["enable-logging"])
+        prefs = {
+            "profile.default_content_settings.popups": 0,
+            "download.default_directory": raw_path,
+            "download.prompt_for_download": False,
+            "download.directory_upgrade": True,
+        }
+        options.add_experimental_option("prefs", prefs)
+        
+        return options
+
+    def check_exists_by_xpath(driver, xpath):
+        try:
+            driver.find_element(By.XPATH, xpath)
+        except NoSuchElementException:
+            return False
+        return True
+
+    def get_vg_cfs(split: int):
+        if split != 1 and split != 2 and split != 3:
+            print("Enter 1 or 2 or 3")
+            return
+
+        local_temp_dir = f"vg_cash_flow_raw_data_{split}"
+        full_temp_dir = f"{base_raw_path}/{local_temp_dir}"
+        os.makedirs(full_temp_dir)
+
+        with webdriver.Chrome(
+            service=ChromeService(ChromeDriverManager().install()),
+            options=get_webdriver_options(full_temp_dir),
+        ) as driver:
+            driver.get(url)
+
+            funds_container_xpath = (
+                "/html/body/div[1]/div/div[2]/div[2]/div/data-ng-include/div/div[1]"
+            )
+            download_button_xpath = "/html/body/div[1]/div/div[2]/div[2]/div/data-ng-include/div/div[2]/span/form/button"
+            date_xpath = "/html/body/div[1]/div/div[1]/div[2]/div/data-ng-include/div/div/div/div[2]/div[1]/input"
+
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located(
+                    (By.XPATH, f"{funds_container_xpath}/div[{split}]")
+                )
+            )
+
+            VG_ETF_COUNT = 21
+            # can only select 10 at a time - will select 7 at a time
+            for i in range(split, VG_ETF_COUNT + 1, 3):
+                curr_xpath = f"{funds_container_xpath}/div[{i}]"
+                if not check_exists_by_xpath(driver, curr_xpath):
+                    print("xpath does not exist")
+                    break
+
+                fund = driver.find_element(By.XPATH, curr_xpath)
+                fund.click()
+
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, download_button_xpath))
+            )
+            driver.find_element(By.XPATH, download_button_xpath).click()
+            time.sleep(120)
+
+            # as_of_date = driver.find_element(By.XPATH, date_xpath).text
+            # print(as_of_date)
+
+            default_zip_name = "vgi_etf_cash_flow.zip"
+            with zipfile.ZipFile(f"{local_temp_dir}\{default_zip_name}", "r") as zip_ref:
+                zip_ref.extractall("vg_cash_flow_clean_data")
+            
+            shutil.rmtree(full_temp_dir)
+
+    get_vg_cfs(split)
+
+
+def runInParallel(*fns):
+    proc = []
+    for fn, args in fns:
+        p = Process(target=fn, args=args)
+        p.start()
+        proc.append(p)
+    for p in proc:
+        p.join()
+
+
 if __name__ == "__main__":
-    # create_vg_fund_info("out")
     # Input values in the function
     t0 = time.time()
 
+    # create_vg_fund_info("out")
     # raw_path = r"C:\Users\chris\trade\curr_pos\vg_raw_holdings_data"
-    cj = browser_cookie3.chrome()
-    clean_path = r"C:\Users\chris\trade\curr_pos\vg_clean_holdings_data"
-    funds = [
-        ETFInfo(ticker="VOX", asset_class=Asset.equity),
-        ETFInfo(ticker="BNDX", asset_class=Asset.fixed_income),
-        ETFInfo(ticker="VCEB", asset_class=Asset.fixed_income),
-        ETFInfo(ticker="EDV", asset_class=Asset.fixed_income),
-    ]
-    get_portfolio_data_api(funds, cj, clean_path)
-    
-    # get_portfolio_data("vtc", raw_path, clean_path)
+    # cj = browser_cookie3.chrome()
+    # clean_path = r"C:\Users\chris\trade\curr_pos\vg_clean_holdings_data"
+    # funds = [
+    #     ETFInfo(ticker="VCSH", asset_class=Asset.fixed_income),
+    #     ETFInfo(ticker="VCLT", asset_class=Asset.fixed_income),
+    # ]
+    # get_portfolio_data_api(funds, cj, clean_path)
+
+    base_raw_path = r"C:\Users\chris\trade\curr_pos"
+    get_fund_cash_flow_data(1, base_raw_path)
+    # runInParallel(
+    #     (get_fund_cash_flow_data, (1, base_raw_path)),
+    #     (get_fund_cash_flow_data, (2, base_raw_path)),
+    #     (get_fund_cash_flow_data, (3, base_raw_path)),
+    # )
 
     t1 = time.time()
-    print("\033[94m {}\033[00m" .format(t1 - t0), " seconds")
-
-    # print(get_portfolio_data_api("vv", Asset.equity, "helo"))
+    print("\033[94m {}\033[00m".format(t1 - t0), " seconds")
