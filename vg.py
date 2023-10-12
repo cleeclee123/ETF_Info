@@ -415,7 +415,7 @@ def get_fund_cash_flow_data(split: int, base_raw_path: str):
             return
 
         local_temp_dir = f"vg_cash_flow_raw_data_{split}"
-        full_temp_dir = f"{base_raw_path}/{local_temp_dir}"
+        full_temp_dir = f"{base_raw_path}\{local_temp_dir}"
         os.makedirs(full_temp_dir)
 
         with webdriver.Chrome(
@@ -428,7 +428,7 @@ def get_fund_cash_flow_data(split: int, base_raw_path: str):
                 "/html/body/div[1]/div/div[2]/div[2]/div/data-ng-include/div/div[1]"
             )
             download_button_xpath = "/html/body/div[1]/div/div[2]/div[2]/div/data-ng-include/div/div[2]/span/form/button"
-            date_xpath = "/html/body/div[1]/div/div[1]/div[2]/div/data-ng-include/div/div/div/div[2]/div[1]/input"
+            # date_xpath = "/html/body/div[1]/div/div[1]/div[2]/div/data-ng-include/div/div/div/div[2]/div[1]/input"
 
             WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located(
@@ -451,7 +451,7 @@ def get_fund_cash_flow_data(split: int, base_raw_path: str):
                 EC.presence_of_element_located((By.XPATH, download_button_xpath))
             )
             driver.find_element(By.XPATH, download_button_xpath).click()
-            time.sleep(120)
+            time.sleep(3)
 
             # as_of_date = driver.find_element(By.XPATH, date_xpath).text
             # print(as_of_date)
@@ -460,7 +460,7 @@ def get_fund_cash_flow_data(split: int, base_raw_path: str):
             with zipfile.ZipFile(f"{local_temp_dir}\{default_zip_name}", "r") as zip_ref:
                 zip_ref.extractall("vg_cash_flow_clean_data")
             
-            shutil.rmtree(full_temp_dir)
+        shutil.rmtree(full_temp_dir)
 
     get_vg_cfs(split)
 
@@ -478,10 +478,10 @@ def runInParallel(*fns):
 if __name__ == "__main__":
     # Input values in the function
     t0 = time.time()
+    cj = browser_cookie3.chrome()
 
     # create_vg_fund_info("out")
     # raw_path = r"C:\Users\chris\trade\curr_pos\vg_raw_holdings_data"
-    # cj = browser_cookie3.chrome()
     # clean_path = r"C:\Users\chris\trade\curr_pos\vg_clean_holdings_data"
     # funds = [
     #     ETFInfo(ticker="VCSH", asset_class=Asset.fixed_income),
@@ -490,12 +490,11 @@ if __name__ == "__main__":
     # get_portfolio_data_api(funds, cj, clean_path)
 
     base_raw_path = r"C:\Users\chris\trade\curr_pos"
-    get_fund_cash_flow_data(1, base_raw_path)
-    # runInParallel(
-    #     (get_fund_cash_flow_data, (1, base_raw_path)),
-    #     (get_fund_cash_flow_data, (2, base_raw_path)),
-    #     (get_fund_cash_flow_data, (3, base_raw_path)),
-    # )
+    runInParallel(
+        (get_fund_cash_flow_data, (1, base_raw_path)),
+        (get_fund_cash_flow_data, (2, base_raw_path)),
+        (get_fund_cash_flow_data, (3, base_raw_path)),
+    )
 
     t1 = time.time()
     print("\033[94m {}\033[00m".format(t1 - t0), " seconds")
