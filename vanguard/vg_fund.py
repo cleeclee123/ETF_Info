@@ -279,20 +279,23 @@ def vg_get_historical_nav_prices(
 
     fund_ids = vg_multi_ticker_to_ticker_id(tickers, cj)
     nested = asyncio.run(run_fetch_all(fund_ids))
-    dict_dfs = {}
+    dict_dfs: Dict[str, List[Dict[str, str]]] = {}
     for data in nested:
         curr_ticker = data["ticker"]
-        curr_nav_data: List[List[Dict[str, str]]] = data["data"]
-        flat_curr_nav_data: List[Dict[str, str]] = [item for sublist in curr_nav_data for item in sublist]
-        
-        curr_df = pd.DataFrame(flat_curr_nav_data)
-        dict_dfs[curr_ticker] = curr_df
+        curr_nav_data: List[Dict[str, str]] = data["data"]
 
-        if raw_path:
-            curr_df["date"] = pd.to_datetime(curr_df["date"])
-            curr_df["date"] = curr_df["date"].dt.strftime("%Y-%m-%d")
-            curr_df.to_excel(f"{raw_path}/{curr_ticker}_nav_prices.xlsx", index=False)
-
+        if curr_ticker in dict_dfs:
+            dict_dfs[curr_ticker].extend(curr_nav_data)
+        else:
+            dict_dfs[curr_ticker] = (curr_nav_data)
+            
+    print(dict_dfs)
+    dict_dfs = { ticker: pd.DataFrame(list) for ticker, list in dict_dfs.items() }
+    [
+        curr_df.to_excel(f"{raw_path}/{curr_ticker}_nav_prices.xlsx", index=False)
+        for ticker, curr_df in dict_dfs.items()
+        if raw_path
+    ]
     return dict_dfs
 
 

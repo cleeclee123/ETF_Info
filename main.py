@@ -106,6 +106,7 @@ if __name__ == "__main__":
     )
     
     print(df_nav_dict)
+    
 
     
     t1 = time.time()
