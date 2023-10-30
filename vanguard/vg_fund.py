@@ -1,30 +1,42 @@
 import requests
 import pandas as pd
-from datetime import datetime
 import http
-import os
-from typing import Tuple
+import aiohttp
+import asyncio
 import webbrowser
+import os
+import urllib.parse
+import bs4
+import numpy as np
+from datetime import datetime, timedelta, date
+from typing import List, Dict
 
 
-# need to update path
-def get_vanguard_auth(cj: http.cookiejar) -> Tuple[dict, str]:
-    # gets short term cookies
-    webbrowser.open(f"https://advisors.vanguard.com/advisors-home")
-    cookies = {
-        cookie.name: cookie.value for cookie in cj if "vangaurd" in cookie.domain
-    }
+def vg_get_headers(
+    auth: str, path: str, referer: str, cj: http.cookiejar = None
+) -> Dict[str, str]:
+    cookie_str = ""
+    if cj:
+        webbrowser.open("https://advisors.vanguard.com/advisors-home")
+        webbrowser.open("https://investor.vanguard.com/home")
+        cookies = {
+            cookie.name: cookie.value for cookie in cj if "vangaurd" in cookie.domain
+        }
+        cookie_str = "; ".join([f"{key}={value}" for key, value in cookies.items()])
+        os.system("taskkill /im chrome.exe /f")
+
     headers = {
-        "authority": "www.tipranks.com",
+        "authority": auth,
         "method": "GET",
-        "path": "",
+        "path": path,
         "scheme": "https",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7,application/json",
         "Accept-Encoding": "gzip, deflate, br",
         "Accept-Language": "en-US,en;q=0.9",
         "Cache-Control": "max-age=0",
-        "Cookie": "; ".join([f"{key}={value}" for key, value in cookies.items()]),
+        "Cookie": cookie_str,
         "Dnt": "1",
+        "Referer": referer,
         "Sec-Ch-Ua": '"Chromium";v="116", "Not)A;Brand";v="24", "Google Chrome";v="116"',
         "Sec-Ch-Ua-Mobile": "?0",
         "Sec-Ch-Ua-Platform": "Windows",
@@ -35,201 +47,327 @@ def get_vanguard_auth(cj: http.cookiejar) -> Tuple[dict, str]:
         "Upgrade-Insecure-Requests": "1",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
     }
-    os.system("taskkill /im chrome.exe /f")
+    if not cj:
+        del headers["Cookie"]
 
     return headers
 
 
-def get_vg_fund_data() -> dict:
-    url = "https://investor.vanguard.com/investment-products/list/funddetail"
-    res = requests.get(url)
-    json_res = res.json()
-    fund_info_list = json_res["fund"]["entity"]
+def vg_ticker_to_ticker_id(ticker: str, cj: http.cookiejar = None) -> int | None:
+    try:
+        url = f"https://investor.vanguard.com/investment-products/etfs/profile/api/{ticker}/profile"
+        headers = vg_get_headers(
+            "investor.vanguard.com",
+            f"/investment-products/etfs/profile/api/{ticker}/profile",
+            url,
+            cj,
+        )
+        res = requests.get(url, headers=headers)
+        json = res.json()
+        return json["fundProfile"]["fundId"]
+    except Exception as e:
+        print(e)
+        return None
 
-    return fund_info_list
 
-
-def filter_vg_fund_data(fund_data: dict) -> dict:
-    filtered = {}
-
-    profile = fund_data.get("profile", {})
-    risk = fund_data.get("risk", {})
-    prices = fund_data.get("dailyPrice", {})
-    yield_data = fund_data.get("yield", {})
-    ytd = fund_data.get("ytd", {})
-    performance = fund_data.get("monthEndAvgAnnualRtn", {})
-
-    filtered["ticker"] = profile.get("ticker", "DNE")
-    filtered["cusip"] = profile.get("cusip", "DNE")
-    filtered["name"] = profile.get("longName", "DNE")
-    filtered["expenseRatio"] = profile.get("expenseRatio", "DNE")
-    filtered["active"] = profile.get("fundFact", {}).get("isActiveFund", "DNE")
-    filtered["style"] = profile.get("fundManagementStyle", "DNE")
-    filtered["vg_risk_code"] = risk.get("code", "DNE")
-
-    def check_asset():
-        if profile.get("fundFact", {}).get("isBond", "DNE") == True:
-            return "Fixed Income - Bond"
-        if profile.get("fundFact", {}).get("isMoneyMarket", "DNE") == True:
-            return "Fixed Income - Money Market"
-        if profile.get("fundFact", {}).get("isFundOfFunds", "DNE") == True:
-            return "Fixed Income - Fund of Funds"
-        if profile.get("fundFact", {}).get("isBalanced", "DNE") == True:
-            return "Fixed Income - Balanced"
-        if profile.get("fundFact", {}).get("isStock", "DNE") == True:
-            return "Equity"
-
-    filtered["asset"] = check_asset()
-
-    filtered["vol_date"] = risk.get("volatility", {}).get("asOfDate", "DNE")
-    filtered["vol_primary_benchmark"] = risk.get("volatility", {}).get(
-        "primaryBenchmarkName", "DNE"
-    )
-    filtered["vol_broadbase _benchmark"] = risk.get("volatility", {}).get(
-        "broadBasedBenchmarkName", "DNE"
-    )
-    filtered["vol_beta_primary"] = risk.get("volatility", {}).get("betaPrimary", "DNE")
-    filtered["vol_rSquared_primary"] = risk.get("volatility", {}).get(
-        "rSquaredPrimary", "DNE"
-    )
-    filtered["vol_beta_broadbased"] = risk.get("volatility", {}).get(
-        "betaBroadBased", "DNE"
-    )
-    filtered["vol_rSquared_broadbased"] = risk.get("volatility", {}).get(
-        "rSquaredBroadBased", "DNE"
-    )
-
-    filtered["market_date"] = prices.get("market", {}).get("asOfDate", "DNE")
-    filtered["market_price"] = prices.get("market", {}).get("price", "DNE")
-    filtered["market_price_change_amt"] = prices.get("market", {}).get(
-        "priceChangeAmount", "DNE"
-    )
-    filtered["market_price_change_pct"] = prices.get("market", {}).get(
-        "priceChangePct", "DNE"
-    )
-
-    filtered["yield_date"] = yield_data.get("asOfDate", "DNE")
-    filtered["yield_sec_pct"] = yield_data.get("yieldPct", "DNE")
+def vg_get_pcf(
+    ticker: str, raw_path: str = None, cj: http.cookiejar = None
+) -> pd.DataFrame:
+    ticker_id = vg_ticker_to_ticker_id(ticker, cj)
+    if not ticker_id:
+        return pd.DataFrame()
 
     try:
-        filtered["yield_rating"] = yield_data.get("yieldNote", [])[0].get(
-            "footnoteCode", "DNE"
+        url = f"https://investor.vanguard.com/investment-products/etfs/profile/api/{ticker_id}/portfolio-holding/pcf"
+        headers = vg_get_headers(
+            "investor.vanguard.com",
+            f"/investment-products/etfs/profile/api/{ticker_id}/portfolio-holding/pcf",
+            url,
+            cj,
         )
-    except:
-        filtered["yield_rating"] = "DNE"
-
-    filtered["ytd_date"] = ytd.get("asOfDate", "DNE")
-    filtered["ytd_reg_market_spread"] = (
-        "DNE"
-        if ytd.get("marketPrice", "DNE") == "DNE" or ytd.get("regular", "DNE") == "DNE"
-        else abs(int(float(ytd.get("regular", 0))) - int(float(ytd["marketPrice"])))
-    )
-
-    filtered["inception"] = performance.get("sinceInceptionAsOfDate", "DNE")
-    filtered["fund_performace_date"] = performance.get("fundReturn", {}).get(
-        "asOfDate", "DNE"
-    )
-    filtered["fund_ytd_return_pct"] = performance.get("fundReturn", {}).get(
-        "calendarYTDPct", "DNE"
-    )
-    filtered["fund_prev_month_return_pct"] = performance.get("fundReturn", {}).get(
-        "prevMonthPct", "DNE"
-    )
-    filtered["fund_three_month_return_pct"] = performance.get("fundReturn", {}).get(
-        "threeMonthPct", "DNE"
-    )
-    filtered["fund_one_year_return_pct"] = performance.get("fundReturn", {}).get(
-        "oneYrPct", "DNE"
-    )
-    filtered["fund_three_year_return_pct"] = performance.get("fundReturn", {}).get(
-        "threeYrPct", "DNE"
-    )
-    filtered["fund_five_year_return_pct"] = performance.get("fundReturn", {}).get(
-        "fiveYrPct", "DNE"
-    )
-    filtered["fund_ten_year_return_pct"] = performance.get("fundReturn", {}).get(
-        "tenYrPct", "DNE"
-    )
-    filtered["fund_lifetime_return_pct"] = performance.get("fundReturn", {}).get(
-        "sinceInceptionPct", "DNE"
-    )
-
-    filtered["market_price_performace_date"] = performance.get(
-        "marketPriceFundReturn", {}
-    ).get("asOfDate", "DNE")
-    filtered["market_price_ytd_return_pct"] = performance.get(
-        "marketPriceFundReturn", {}
-    ).get("calendarYTDPct", "DNE")
-    filtered["market_price_prev_month_return_pct"] = performance.get(
-        "marketPriceFundReturn", {}
-    ).get("prevMonthPct", "DNE")
-    filtered["market_price_three_month_return_pct"] = performance.get(
-        "marketPriceFundReturn", {}
-    ).get("threeMonthPct", "DNE")
-    filtered["market_price_one_year_return_pct"] = performance.get(
-        "marketPriceFundReturn", {}
-    ).get("oneYrPct", "DNE")
-    filtered["market_price_three_year_return_pct"] = performance.get(
-        "marketPriceFundReturn", {}
-    ).get("threeYrPct", "DNE")
-    filtered["market_price_five_year_return_pct"] = performance.get(
-        "marketPriceFundReturn", {}
-    ).get("fiveYrPct", "DNE")
-    filtered["market_price_ten_year_return_pct"] = performance.get(
-        "marketPriceFundReturn", {}
-    ).get("tenYrPct", "DNE")
-    filtered["market_price_lifetime_return_pct"] = performance.get(
-        "marketPriceFundReturn", {}
-    ).get("sinceInceptionPct", "DNE")
-
-    return filtered
+        res = requests.get(url, headers=headers)
+        holdings = res.json()["holding"]
+        df = pd.DataFrame(holdings)
+        if raw_path:
+            df.to_excel(f"{raw_path}\{ticker}_pcf.xlsx", index=False)
+        return df
+    except Exception as e:
+        print(e)
+        return pd.DataFrame()
 
 
-def flatten_json(y):
-    out = {}
-
-    def flatten(x, name=""):
-        if type(x) is dict:
-            for a in x:
-                flatten(x[a], name + a + "_")
-        elif type(x) is list:
-            i = 0
-            for a in x:
-                flatten(a, name + str(i) + "_")
-                i += 1
-        else:
-            out[name[:-1]] = x
-
-    flatten(y)
-    return out
-
-
-def create_vg_fund_info(parent_dir: str = None) -> pd.DataFrame:
-    all_data = get_vg_fund_data()
-
-    filtered = []
-    flatten = []
-    for fund in all_data:
-        filtered.append(filter_vg_fund_data(fund))
-        flatten.append(flatten_json(fund))
-
-    curr_date = datetime.today().strftime("%Y-%m-%d")
-    wb_name = (
-        f"./{parent_dir}/{curr_date}_vg_fund_info.xlsx"
-        if (parent_dir)
-        else f"{curr_date}_vg_fund_info.xlsx"
-    )
-
-    with pd.ExcelWriter(wb_name) as writer:
-        filtered_df = pd.DataFrame(filtered)
-        filtered_df.drop(filtered_df[filtered_df.ticker == "DNE"].index, inplace=True)
-        filtered_df.to_excel(writer, sheet_name="vg_fund_info_filtered", index=False)
-
-        flatten_df = pd.DataFrame(flatten)
-        flatten_df = flatten_df.fillna("DNE")
-        flatten_df.drop(
-            flatten_df[flatten_df.profile_ticker == "DNE"].index, inplace=True
+def vg_get_etf_inception_date(
+    ticker: str, cj: http.cookiejar = None, fund_info_dataset_path: str = None
+) -> str:
+    if fund_info_dataset_path:
+        df = pd.read_excel(fund_info_dataset_path)
+        fund_row = df[(df["ticker"] == f"{ticker}")]
+        inception_date = datetime.strptime(
+            str(fund_row["inception"].iloc[0]).split("T")[0], "%Y-%m-%d"
         )
-        flatten_df.to_excel(writer, sheet_name="vg_fund_info_flatten", index=False)
+        return inception_date.strftime("%m-%d-%Y")
 
-    return filtered_df
+    try:
+        url = f"https://investor.vanguard.com/investment-products/etfs/profile/api/{ticker}/profile"
+        headers = vg_get_headers(
+            "investor.vanguard.com",
+            f"/investment-products/etfs/profile/api/{ticker}/profile",
+            url,
+            cj,
+        )
+        res = requests.get(url, headers=headers)
+        json = res.json()
+        inception_date = datetime.strptime(
+            str(json["fundProfile"]["inceptionDate"]).split("T")[0], "%Y-%m-%d"
+        )
+        return inception_date.strftime("%m-%d-%Y")
+
+    except Exception as e:
+        print(e)
+        return None
+
+
+def create_12_month_periods(
+    start_date_str: date, end_date_str: date
+) -> List[List[str]]:
+    start_date = datetime.strptime(start_date_str, "%m-%d-%Y")
+    end_date = datetime.strptime(end_date_str, "%m-%d-%Y")
+
+    periods = []
+    current_period_start = start_date
+    while current_period_start < end_date:
+        current_period_end = current_period_start + timedelta(days=365)
+        if current_period_end > end_date:
+            current_period_end = end_date
+        periods.append(
+            [
+                current_period_start.strftime("%m-%d-%Y"),
+                current_period_end.strftime("%m-%d-%Y"),
+            ]
+        )
+        current_period_start += timedelta(days=365)
+
+    return periods
+
+
+def is_valid_date(date_string, format_string="%m-%d-%Y") -> bool:
+    try:
+        datetime.strptime(date_string, format_string)
+        return True
+    except ValueError:
+        return False
+
+
+def vg_get_historical_nav_prices(
+    ticker: str, raw_path: str = None, cj: http.cookiejar = None
+) -> pd.DataFrame:
+    async def fetch(session: aiohttp.ClientSession, url: str) -> pd.DataFrame:
+        try:
+            referer = url.split(".com")[1]
+            headers = vg_get_headers("personal.vanguard.com", referer, url, cj)
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    html_string = await response.text()
+                    soup = bs4.BeautifulSoup(html_string, "html.parser")
+
+                    def vg_table_html_filter_class(tag):
+                        return (
+                            tag.name == "tr"
+                            and ("class" in tag.attrs)
+                            and ("wr" in tag["class"] or "ar" in tag["class"])
+                        )
+
+                    tbody = soup.findAll("table")[2].findAll(vg_table_html_filter_class)
+                    list = []
+                    for row in tbody:
+                        try:
+                            cols = row.find_all("td")
+                            if len(cols) >= 2:
+                                date = cols[0].get_text(strip=True)
+                                price = cols[1].get_text(strip=True).replace(",", "")
+
+                                if "$" not in str(price) or not is_valid_date(
+                                    str(date).replace("/", "-")
+                                ):
+                                    continue
+
+                                list.append({"date": date, "navPrice": price})
+
+                        except Exception as e:
+                            print(e)
+                            continue
+
+                    return list
+
+                else:
+                    raise Exception(f"Bad Status: {response.status}")
+        except Exception as e:
+            print(e)
+            return []
+
+    async def get_promises(
+        session: aiohttp.ClientSession,
+        fund_id: int,
+        inception_date_str: str,
+        today_date_str: str,
+    ):
+        targets = create_12_month_periods(inception_date_str, today_date_str)
+        tasks = []
+        for date in targets:
+            begin, end = [urllib.parse.quote_plus(x) for x in date]
+            curr_url = f"https://personal.vanguard.com/us/funds/tools/pricehistorysearch?radio=1&results=get&FundType=ExchangeTradedShares&FundIntExt=INT&FundId={fund_id}&fundName=0930&radiobutton2=1&beginDate={begin}&endDate={end}&year=#res"
+
+            print(begin, end, curr_url)
+
+            task = fetch(session, curr_url)
+            tasks.append(task)
+
+        return await asyncio.gather(*tasks)
+
+    async def run_fetch_all(
+        fund_id: int,
+        inception_date_str: str,
+        today_date_str: str,
+    ) -> List:
+        async with aiohttp.ClientSession() as session:
+            all_data = await get_promises(
+                session, fund_id, inception_date_str, today_date_str
+            )
+            return all_data
+
+    fund_id = vg_ticker_to_ticker_id(ticker, cj)
+    inception_date_str = vg_get_etf_inception_date(ticker, cj, None)
+    today_date_str = datetime.today().strftime("%m-%d-%Y")
+    list_of_lists = asyncio.run(
+        run_fetch_all(fund_id, inception_date_str, today_date_str)
+    )
+    flat = [item for sublist in list_of_lists for item in sublist]
+    df = pd.DataFrame(flat)
+
+    if raw_path:
+        df["date"] = pd.to_datetime(df["date"])
+        df["date"] = df["date"].dt.strftime("%Y-%m-%d")
+
+        df.to_excel(
+            f"{raw_path}/{ticker}_{today_date_str}_all_nav_prices.xlsx", index=False
+        )
+
+    return df
+
+
+def vg_daily_data(
+    ticker: str,
+    fund_data_path: str,
+    fund_flow_path: str,
+    raw_path = None,
+    make_wb: bool = False,
+    starting_date: str = None,
+    shares_outstanding: int = None,
+    cj: http.cookiejar = None,
+) -> pd.DataFrame:
+    def get_next_idx(df, current_idx):
+        after = df.truncate(before=current_idx).iloc[1:]
+        return after.index[0] if 0 < len(after) else None
+
+    def get_prev_idx(df, current_idx):
+        before = df.truncate(after=current_idx).iloc[:-1]
+        return before.index[-1] if 0 < len(before) else None
+
+    current_date = datetime.today().strftime("%m-%d-%Y")
+    try:
+        nav_price_path = f"{os.path.dirname(os.path.realpath(__file__))}/vg_nav_data/{ticker}_{current_date}_all_nav_prices.xlsx"
+        nav_df = pd.read_excel(nav_price_path, parse_dates=["date"]).sort_values("date")
+        nav_df["date"] = pd.to_datetime(nav_df["date"], format="%m/%d/%Y")
+        nav_df = nav_df[nav_df["date"].dt.year == 2023]
+        nav_df.set_index("date", inplace=True)
+        nav_df.index.names = ["Date"]
+    except Exception as e:
+        print(f"{ticker} NAV Excel WB not found, fetching NAV Data")
+        nav_df = vg_get_historical_nav_prices(
+            ticker, f"{os.path.dirname(os.path.realpath(__file__))}/vg_nav_data/", cj
+        )
+        nav_df['date'] = pd.to_datetime(nav_df['date'])
+        nav_df.sort_values("date") 
+        nav_df["date"] = pd.to_datetime(nav_df["date"], format="%m/%d/%Y")
+        nav_df = nav_df[nav_df["date"].dt.year == 2023]
+        nav_df.set_index("date", inplace=True)
+        nav_df.index.names = ["Date"]
+    nav_df = nav_df.loc[~nav_df.index.duplicated(keep='first')]
+        
+    fund_flow_df = pd.read_excel(fund_flow_path, parse_dates=["asOf"], index_col=0)
+    fund_flow_df.index.names = ["Date"]
+    fund_flow_df.rename(columns={"value": "flow"}, inplace=True)
+    fund_flow_df["flow"] = fund_flow_df["flow"].apply(lambda x: x * 1e6)
+    fund_flow_df.replace(np.nan, 0, inplace=True)
+    fund_flow_df = fund_flow_df.loc[~fund_flow_df.index.duplicated(keep='first')]
+    
+    fund_data_df = pd.read_excel(fund_data_path, parse_dates=["Date"], index_col=0)
+    fund_data_df = fund_data_df.loc[~fund_data_df.index.duplicated(keep='first')]
+
+    df = pd.concat([fund_data_df, nav_df, fund_flow_df], axis=1)
+    df = df.dropna(subset=["navPrice", "flow"])
+
+    df["navPrice"] = df["navPrice"].str.replace("$", "")
+    df["navPrice"] = df["navPrice"].str.replace(",", "")
+    df["navPrice"] = df["navPrice"].astype("float")
+
+    df["Premium/Discount"] = (df["Close"] - df["navPrice"]) / df["navPrice"]
+    df["Premium/Discount Adjusted"] = (df["Adj Close"] - df["navPrice"]) / df[
+        "navPrice"
+    ]
+
+    # calculate shares outstanding
+    df["Estimated Daily Creation Units"] = df["flow"] / df["navPrice"]
+    if not starting_date or not shares_outstanding:
+        try:
+            fund_id = vg_ticker_to_ticker_id(ticker, cj)
+            res = requests.get(
+                f"https://advisors.vanguard.com/web/ecs/fpp-fas-product-details/valuation-analytics-data/outstanding-shares/{fund_id}",
+                headers=vg_get_headers(
+                    "advisors.vanguard.com",
+                    f"/web/ecs/fpp-fas-product-details/valuation-analytics-data/outstanding-shares/{fund_id}",
+                    f"https://advisors.vanguard.com/investments/products/{ticker}/",
+                    cj,
+                ),
+            )
+            json = res.json()
+            year, month, day = json["effectiveDate"].split("-")
+
+            # vanguard runs reports on saturdays
+            starting_date = f"{year}-{month}-{int(day) - 1}"
+            shares_outstanding = json["outstandingShares"]
+        except Exception as e:
+            print(e)
+            return pd.DataFrame()
+
+    shares_outstanding_starting = {
+        "date": starting_date,
+        "shares": shares_outstanding,
+    }
+    print(shares_outstanding_starting)
+
+    df["Estimated Shares Outstanding"] = np.nan
+    df.at[
+        shares_outstanding_starting["date"], "Estimated Shares Outstanding"
+    ] = shares_outstanding_starting["shares"]
+    for idx in df.index:
+        if idx > datetime.strptime(shares_outstanding_starting["date"], "%Y-%m-%d"):
+            df.loc[idx, "Estimated Shares Outstanding"] = (
+                df.loc[get_prev_idx(df, idx), "Estimated Shares Outstanding"]
+                + df.loc[idx, "Estimated Daily Creation Units"]
+            )
+    for idx in reversed(df.index):
+        if idx < datetime.strptime(shares_outstanding_starting["date"], "%Y-%m-%d"):
+            df.loc[idx, "Estimated Shares Outstanding"] = (
+                df.loc[get_next_idx(df, idx), "Estimated Shares Outstanding"]
+                - df.loc[idx, "Estimated Daily Creation Units"]
+            )
+
+    if make_wb:
+        df.to_excel(
+            f"{raw_path}/{ticker}_daily.xlsx",
+            sheet_name="daily",
+        )
+
+    print(df.head())
+    return df

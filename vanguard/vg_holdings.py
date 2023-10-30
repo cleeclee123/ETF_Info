@@ -18,7 +18,8 @@ from dataclasses import dataclass
 import zipfile
 from multiprocessing import Process
 import shutil
-from vg_fund import get_vanguard_auth
+from vanguard.vg_all_funds import vg_get_basic_headers
+import requests
 
 
 @dataclass
@@ -43,6 +44,24 @@ def latest_download_file(path):
     return newest
 
 
+def download_wait(directory, timeout, nfiles=None):
+    seconds = 0
+    dl_wait = True
+    while dl_wait and seconds < timeout:
+        time.sleep(1)
+        dl_wait = False
+        files = os.listdir(directory)
+        if nfiles and len(files) != nfiles:
+            dl_wait = True
+
+        for fname in files:
+            if fname.endswith(".crdownload"):
+                dl_wait = True
+
+        seconds += 1
+    return seconds
+
+
 def run_in_parallel(*fns):
     proc = []
     for fn, args in fns:
@@ -53,12 +72,14 @@ def run_in_parallel(*fns):
         p.join()
 
 
-def get_portfolio_data_api(funds: List[ETFInfo], cj: http.cookiejar, clean_path: str):
+def parallel_get_portfolio_data_api(
+    funds: List[ETFInfo], cj: http.cookiejar, clean_path: str
+):
     async def fetch(
         session: aiohttp.ClientSession, url: str, curr_ticker: str, curr_asset: Asset
     ) -> Union[List[Dict], None]:
         try:
-            headers = get_vanguard_auth(cj)
+            headers = vg_get_basic_headers(cj)
             headers[
                 "path"
             ] = f"/investment-products/etfs/profile/api/{curr_ticker}/portfolio-holding/{curr_asset.value}"
@@ -87,19 +108,63 @@ def get_portfolio_data_api(funds: List[ETFInfo], cj: http.cookiejar, clean_path:
     holdings_data = dict(zip([fund.ticker for fund in funds], responses))
 
     for ticker in holdings_data:
-        as_of_date_raw = holdings_data[ticker]["asOfDate"]
-        date_obj = datetime.strptime(as_of_date_raw, "%Y-%m-%dT%H:%M:%S%z")
-        formatted_date_str = date_obj.strftime("%m-%d-%Y")
-        wb_name = f"{clean_path}\{formatted_date_str}_{ticker}_holdings_data_clean.xlsx"
+        try:
+            as_of_date_raw = holdings_data[ticker]["asOfDate"]
+            date_obj = datetime.strptime(as_of_date_raw, "%Y-%m-%dT%H:%M:%S%z")
+            formatted_date_str = date_obj.strftime("%m-%d-%Y")
+            wb_name = (
+                f"{clean_path}\{formatted_date_str}_{ticker}_holdings_data_clean.xlsx"
+            )
+        except:
+            as_of_date_raw = holdings_data[ticker]["fund"]["entity"][0]["asOfDate"]
+            date_obj = datetime.strptime(as_of_date_raw, "%Y-%m-%dT%H:%M:%S%z")
+            formatted_date_str = date_obj.strftime("%m-%d-%Y")
+            wb_name = (
+                f"{clean_path}\{formatted_date_str}_{ticker}_holdings_data_clean.xlsx"
+            )
 
         try:
             curr_df = pd.DataFrame(holdings_data[ticker]["fund"]["entity"])
             curr_df = curr_df.fillna("DNE")
             curr_df.to_excel(wb_name, index=False)
         except Exception as e:
-            print(f"Error with {ticker}")
+            print(
+                f"Error with {ticker} - Is this the correct Ticker? - Does this exist?"
+            )
             print(e)
             continue
+
+    return holdings_data
+
+
+def single_get_portfolio_data_api(funds: ETFInfo, cj: http.cookiejar, clean_path: str):
+    ticker, asset = funds.ticker, funds.asset_class.value
+    headers = vg_get_basic_headers(cj)
+    headers[
+        "path"
+    ] = f"/investment-products/etfs/profile/api/{ticker}/portfolio-holding/{asset}"
+    url = f"https://investor.vanguard.com/investment-products/etfs/profile/api/{ticker}/portfolio-holding/{asset}"
+    res = requests.get(url, headers=headers)
+
+    holdings_data = res.json()
+    try:
+        as_of_date_raw = holdings_data["asOfDate"]
+        date_obj = datetime.strptime(as_of_date_raw, "%Y-%m-%dT%H:%M:%S%z")
+        formatted_date_str = date_obj.strftime("%m-%d-%Y")
+        wb_name = f"{clean_path}\{formatted_date_str}_{ticker}_holdings_data_clean.xlsx"
+    except:
+        as_of_date_raw = holdings_data["fund"]["entity"][0]["asOfDate"]
+        date_obj = datetime.strptime(as_of_date_raw, "%Y-%m-%dT%H:%M:%S%z")
+        formatted_date_str = date_obj.strftime("%m-%d-%Y")
+        wb_name = f"{clean_path}\{formatted_date_str}_{ticker}_holdings_data_clean.xlsx"
+
+    try:
+        curr_df = pd.DataFrame(holdings_data["fund"]["entity"])
+        curr_df = curr_df.fillna("DNE")
+        curr_df.to_excel(wb_name, index=False)
+    except Exception as e:
+        print(f"Error with {ticker} - Is this the correct Ticker? - Does this exist?")
+        print(e)
 
     return holdings_data
 
@@ -137,7 +202,9 @@ def get_portfolio_data_button(ticker: str, raw_path: str, clean_path: str):
 
             data_as_of_date_xpath = "/html/body/div[1]/div[1]/div[1]/article/div[3]/section[4]/div/div/section/div[2]/div[1]/p"
             as_of_date_raw = (
-                driver.find_element(By.XPATH, data_as_of_date_xpath).text.split(" ").pop()
+                driver.find_element(By.XPATH, data_as_of_date_xpath)
+                .text.split(" ")
+                .pop()
             )
             date_obj = datetime.strptime(as_of_date_raw, "%m/%d/%Y")
             formatted_date_str = date_obj.strftime("%m-%d-%Y")
@@ -146,13 +213,15 @@ def get_portfolio_data_button(ticker: str, raw_path: str, clean_path: str):
 
             output_file_name = latest_download_file(raw_path)
             renamed_output_file = f"{formatted_date_str}_{ticker}_holdings_data_raw.csv"
-            os.rename(f"{raw_path}\{output_file_name}", f"{raw_path}\{renamed_output_file}")
+            os.rename(
+                f"{raw_path}\{output_file_name}", f"{raw_path}\{renamed_output_file}"
+            )
             clean_vg_holdings_data(
                 renamed_output_file, formatted_date_str, ticker, clean_path
             )
             driver.quit()
     except WebDriverException:
-        print('Web Driver Failed to Start')
+        print("Web Driver Failed to Start")
         os.system("taskkill /im chromedriver.exe")
 
 
@@ -238,10 +307,12 @@ def get_fund_cash_flow_data(split: int, base_raw_path: str):
                     EC.presence_of_element_located((By.XPATH, download_button_xpath))
                 )
                 driver.find_element(By.XPATH, download_button_xpath).click()
-                time.sleep(5)
 
                 # as_of_date = driver.find_element(By.XPATH, date_xpath).text
                 # print(as_of_date)
+
+                # wait for download to be complete with 10 sec timeout
+                download_wait(full_temp_dir, 10, 1)
 
                 default_zip_name = "vgi_etf_cash_flow.zip"
                 with zipfile.ZipFile(
@@ -253,7 +324,7 @@ def get_fund_cash_flow_data(split: int, base_raw_path: str):
             shutil.rmtree(full_temp_dir)
             driver.quit()
         except WebDriverException:
-            print('Web Driver Failed to Start')
+            print("Web Driver Failed to Start")
             os.system("taskkill /im chromedriver.exe")
 
     get_vg_cfs(split)

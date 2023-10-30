@@ -309,6 +309,6 @@ if __name__ == "__main__":
     yahoo_pp = json.dumps(yahoo_finance_data, sort_keys=True, indent=4)
     print(yahoo_pp)
 
-    tipranks_data = get_tipranks_ratings(cj, "etf", tickers)
+    # tipranks_data = get_tipranks_ratings(cj, "etf", tickers)
     # tipranks_pp = json.dumps(tipranks_data, sort_keys=True, indent=4)
     # print(tipranks_pp)
