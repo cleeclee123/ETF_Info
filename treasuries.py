@@ -122,7 +122,7 @@ def get_treasurygov_header(year: int, cj: http.cookiejar = None) -> Dict[str, st
     return headers
 
 
-def download_multi_year_treasury_par_yield_curve_rate(
+def multi_download_year_treasury_par_yield_curve_rate(
     years: List[int], raw_path: str, cj: http.cookiejar = None
 ) -> pd.DataFrame:
     async def fetch(
@@ -191,15 +191,3 @@ def download_multi_year_treasury_par_yield_curve_rate(
     yield_df.to_excel(os.path.join(raw_path, f"{years_str}_daily_treasury_rates.xlsx"), index=False)
 
     return yield_df
-
-
-if __name__ == "__main__":
-    start = time.time()
-
-    raw_path = os.path.dirname(os.path.realpath(__file__))
-    years = [x for x in reversed(range(2000, 2024))]
-    df = download_multi_year_treasury_par_yield_curve_rate(years, raw_path)
-    print(df)
-
-    end = time.time()
-    print(f"Time Elapsed: {end - start} s")

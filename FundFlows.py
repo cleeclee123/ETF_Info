@@ -185,7 +185,7 @@ def multi_fetch_fund_flow_data(
 
     result = asyncio.run(run_fetch_all())
 
-    return list(zip(tickers, result))
+    return dict(zip(tickers, result))
 
 
 if __name__ == "__main__":

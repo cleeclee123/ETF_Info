@@ -70,6 +70,49 @@ def vg_ticker_to_ticker_id(ticker: str, cj: http.cookiejar = None) -> int | None
         return None
 
 
+def vg_multi_ticker_to_ticker_id(
+    tickers: List[str], cj: http.cookiejar = None
+) -> Dict[str, int]:
+    async def fetch(
+        session: aiohttp.ClientSession, url: str, ticker: int
+    ) -> pd.DataFrame:
+        try:
+            headers = vg_get_headers(
+                "investor.vanguard.com",
+                f"/investment-products/etfs/profile/api/{ticker}/profile",
+                url,
+                cj,
+            )
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    res = requests.get(url, headers=headers)
+                    json = res.json()
+                    return json["fundProfile"]["fundId"]
+                else:
+                    raise Exception(f"Bad Status: {response.status}")
+        except Exception as e:
+            print(e)
+            return -1
+
+    async def get_promises(session: aiohttp.ClientSession):
+        tasks = []
+        for ticker in tickers:
+            curr_url = f"https://investor.vanguard.com/investment-products/etfs/profile/api/{ticker}/profile"
+            task = fetch(session, curr_url, ticker)
+            tasks.append(task)
+
+        return await asyncio.gather(*tasks)
+
+    async def run_fetch_all() -> List[pd.DataFrame]:
+        async with aiohttp.ClientSession() as session:
+            all_data = await get_promises(session)
+            return all_data
+
+    result = asyncio.run(run_fetch_all())
+
+    return dict(zip(tickers, result))
+
+
 def vg_get_pcf(
     ticker: str, raw_path: str = None, cj: http.cookiejar = None
 ) -> pd.DataFrame:
@@ -159,9 +202,11 @@ def is_valid_date(date_string, format_string="%m-%d-%Y") -> bool:
 
 
 def vg_get_historical_nav_prices(
-    ticker: str, raw_path: str = None, cj: http.cookiejar = None
-) -> pd.DataFrame:
-    async def fetch(session: aiohttp.ClientSession, url: str) -> pd.DataFrame:
+    tickers: List[str], raw_path: str = None, cj: http.cookiejar = None
+) -> dict[str, pd.DataFrame]:
+    async def fetch(
+        session: aiohttp.ClientSession, url: str, ticker: str
+    ) -> pd.DataFrame:
         try:
             referer = url.split(".com")[1]
             headers = vg_get_headers("personal.vanguard.com", referer, url, cj)
@@ -197,7 +242,7 @@ def vg_get_historical_nav_prices(
                             print(e)
                             continue
 
-                    return list
+                    return {"ticker": ticker, "data": list}
 
                 else:
                     raise Exception(f"Bad Status: {response.status}")
@@ -207,59 +252,55 @@ def vg_get_historical_nav_prices(
 
     async def get_promises(
         session: aiohttp.ClientSession,
-        fund_id: int,
-        inception_date_str: str,
-        today_date_str: str,
+        fund_ids: Dict[str, int],
     ):
-        targets = create_12_month_periods(inception_date_str, today_date_str)
         tasks = []
-        for date in targets:
-            begin, end = [urllib.parse.quote_plus(x) for x in date]
-            curr_url = f"https://personal.vanguard.com/us/funds/tools/pricehistorysearch?radio=1&results=get&FundType=ExchangeTradedShares&FundIntExt=INT&FundId={fund_id}&fundName=0930&radiobutton2=1&beginDate={begin}&endDate={end}&year=#res"
+        for ticker, fund_id in fund_ids.items():
+            inception_date_str = vg_get_etf_inception_date(ticker, cj, None)
+            today_date_str = datetime.today().strftime("%m-%d-%Y")
+            targets = create_12_month_periods(inception_date_str, today_date_str)
+            for date in targets:
+                begin, end = [urllib.parse.quote_plus(x) for x in date]
+                curr_url = f"https://personal.vanguard.com/us/funds/tools/pricehistorysearch?radio=1&results=get&FundType=ExchangeTradedShares&FundIntExt=INT&FundId={fund_id}&fundName=0930&radiobutton2=1&beginDate={begin}&endDate={end}&year=#res"
 
-            print(begin, end, curr_url)
+                print(begin, end, curr_url)
 
-            task = fetch(session, curr_url)
-            tasks.append(task)
+                task = fetch(session, curr_url, ticker)
+                tasks.append(task)
 
         return await asyncio.gather(*tasks)
 
     async def run_fetch_all(
-        fund_id: int,
-        inception_date_str: str,
-        today_date_str: str,
+        fund_ids: List[Dict[str, Dict[str, str]]],
     ) -> List:
         async with aiohttp.ClientSession() as session:
-            all_data = await get_promises(
-                session, fund_id, inception_date_str, today_date_str
-            )
+            all_data = await get_promises(session, fund_ids)
             return all_data
 
-    fund_id = vg_ticker_to_ticker_id(ticker, cj)
-    inception_date_str = vg_get_etf_inception_date(ticker, cj, None)
-    today_date_str = datetime.today().strftime("%m-%d-%Y")
-    list_of_lists = asyncio.run(
-        run_fetch_all(fund_id, inception_date_str, today_date_str)
-    )
-    flat = [item for sublist in list_of_lists for item in sublist]
-    df = pd.DataFrame(flat)
+    fund_ids = vg_multi_ticker_to_ticker_id(tickers, cj)
+    nested = asyncio.run(run_fetch_all(fund_ids))
+    dict_dfs = {}
+    for data in nested:
+        curr_ticker = data["ticker"]
+        curr_nav_data: List[List[Dict[str, str]]] = data["data"]
+        flat_curr_nav_data: List[Dict[str, str]] = [item for sublist in curr_nav_data for item in sublist]
+        
+        curr_df = pd.DataFrame(flat_curr_nav_data)
+        dict_dfs[curr_ticker] = curr_df
 
-    if raw_path:
-        df["date"] = pd.to_datetime(df["date"])
-        df["date"] = df["date"].dt.strftime("%Y-%m-%d")
+        if raw_path:
+            curr_df["date"] = pd.to_datetime(curr_df["date"])
+            curr_df["date"] = curr_df["date"].dt.strftime("%Y-%m-%d")
+            curr_df.to_excel(f"{raw_path}/{curr_ticker}_nav_prices.xlsx", index=False)
 
-        df.to_excel(
-            f"{raw_path}/{ticker}_{today_date_str}_all_nav_prices.xlsx", index=False
-        )
-
-    return df
+    return dict_dfs
 
 
 def vg_daily_data(
     ticker: str,
     fund_data_path: str,
     fund_flow_path: str,
-    raw_path = None,
+    raw_path=None,
     make_wb: bool = False,
     starting_date: str = None,
     shares_outstanding: int = None,
@@ -274,35 +315,23 @@ def vg_daily_data(
         return before.index[-1] if 0 < len(before) else None
 
     current_date = datetime.today().strftime("%m-%d-%Y")
-    try:
-        nav_price_path = f"{os.path.dirname(os.path.realpath(__file__))}/vg_nav_data/{ticker}_{current_date}_all_nav_prices.xlsx"
-        nav_df = pd.read_excel(nav_price_path, parse_dates=["date"]).sort_values("date")
-        nav_df["date"] = pd.to_datetime(nav_df["date"], format="%m/%d/%Y")
-        nav_df = nav_df[nav_df["date"].dt.year == 2023]
-        nav_df.set_index("date", inplace=True)
-        nav_df.index.names = ["Date"]
-    except Exception as e:
-        print(f"{ticker} NAV Excel WB not found, fetching NAV Data")
-        nav_df = vg_get_historical_nav_prices(
-            ticker, f"{os.path.dirname(os.path.realpath(__file__))}/vg_nav_data/", cj
-        )
-        nav_df['date'] = pd.to_datetime(nav_df['date'])
-        nav_df.sort_values("date") 
-        nav_df["date"] = pd.to_datetime(nav_df["date"], format="%m/%d/%Y")
-        nav_df = nav_df[nav_df["date"].dt.year == 2023]
-        nav_df.set_index("date", inplace=True)
-        nav_df.index.names = ["Date"]
-    nav_df = nav_df.loc[~nav_df.index.duplicated(keep='first')]
-        
+    nav_price_path = f"{os.path.dirname(os.path.realpath(__file__))}/vg_nav_data/{ticker}_{current_date}_all_nav_prices.xlsx"
+    nav_df = pd.read_excel(nav_price_path, parse_dates=["date"]).sort_values("date")
+    nav_df["date"] = pd.to_datetime(nav_df["date"], format="%m/%d/%Y")
+    nav_df = nav_df[nav_df["date"].dt.year == 2023]
+    nav_df.set_index("date", inplace=True)
+    nav_df.index.names = ["Date"]
+    nav_df = nav_df.loc[~nav_df.index.duplicated(keep="first")]
+
     fund_flow_df = pd.read_excel(fund_flow_path, parse_dates=["asOf"], index_col=0)
     fund_flow_df.index.names = ["Date"]
     fund_flow_df.rename(columns={"value": "flow"}, inplace=True)
     fund_flow_df["flow"] = fund_flow_df["flow"].apply(lambda x: x * 1e6)
     fund_flow_df.replace(np.nan, 0, inplace=True)
-    fund_flow_df = fund_flow_df.loc[~fund_flow_df.index.duplicated(keep='first')]
-    
+    fund_flow_df = fund_flow_df.loc[~fund_flow_df.index.duplicated(keep="first")]
+
     fund_data_df = pd.read_excel(fund_data_path, parse_dates=["Date"], index_col=0)
-    fund_data_df = fund_data_df.loc[~fund_data_df.index.duplicated(keep='first')]
+    fund_data_df = fund_data_df.loc[~fund_data_df.index.duplicated(keep="first")]
 
     df = pd.concat([fund_data_df, nav_df, fund_flow_df], axis=1)
     df = df.dropna(subset=["navPrice", "flow"])

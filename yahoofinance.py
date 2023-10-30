@@ -8,7 +8,7 @@ import os
 import browser_cookie3
 import time
 from datetime import date, datetime
-from typing import Tuple, List
+from typing import Tuple, List, Dict
 
 
 def is_downloadable(url):
@@ -106,7 +106,7 @@ def multi_download_historical_data_yahoofinance(
     raw_path: str,
     cj: http.cookiejar = None,
     big_wb=False,
-):
+) -> Dict[str, pd.DataFrame]:
     from_sec = round(from_date.timestamp())
     to_sec = round(to_date.timestamp())
 
@@ -169,7 +169,6 @@ def multi_download_historical_data_yahoofinance(
 
     os.mkdir(f"{raw_path}/temp")
     dfs = asyncio.run(run_fetch_all())
-    print(dfs)
     os.rmdir(f"{raw_path}/temp")
     os.system("taskkill /im chrome.exe /f")
 
@@ -184,4 +183,4 @@ def multi_download_historical_data_yahoofinance(
                     pass
                 df.to_excel(writer, sheet_name=f"{tickers[i]}", index=False)
 
-    return True
+    return dict(zip(tickers, dfs))
