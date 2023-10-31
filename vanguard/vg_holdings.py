@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import zipfile
 from multiprocessing import Process
 import shutil
-from vanguard.vg_all_funds import vg_get_basic_headers
+from vanguard.vg_summary import vg_get_basic_headers
 import requests
 
 

@@ -2,9 +2,10 @@ import time
 import os
 import http
 import json
+import pandas as pd
 from typing import List
 from multiprocessing import Process
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from vanguard.vg import (
     vg_build_summary_book,
@@ -86,6 +87,14 @@ def vg_data_refresh(
         tickers, f"{current_directory}/vanguard/vg_nav_data", cj
     )
 
+    return {
+        "yahoo_finance": df_yf_dict,
+        "fund_flow": df_ff_dict,
+        "treasuries": df_treasuries,
+        "vg_holdings": df_vg_holdings_dict,
+        "vg_nav": df_nav_dict,
+    }
+
 
 if __name__ == "__main__":
     t0 = time.time()
@@ -98,16 +107,14 @@ if __name__ == "__main__":
 
     # from_date = datetime(2023, 1, 1)
     # to_date = datetime.today()
-
     # vg_data_refresh(["EDV", "VGLT", "VGIT", "VGSH"], from_date, to_date)
 
     df_nav_dict = vg_get_historical_nav_prices(
-        ["EDV"], r'C:\Users\chris\trade\curr_pos\vanguard\vg_nav_data', None
+        ["EDV", "VGLT", "VGIT", "VGSH"],
+        r"C:\Users\chris\trade\curr_pos\vanguard\vg_nav_data",
+        None,
     )
-    
     print(df_nav_dict)
-    
 
-    
     t1 = time.time()
     print("\033[94m {}\033[00m".format(t1 - t0), " seconds")

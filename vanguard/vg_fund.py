@@ -9,7 +9,7 @@ import urllib.parse
 import bs4
 import numpy as np
 from datetime import datetime, timedelta, date
-from typing import List, Dict
+from typing import List, Dict, Tuple
 
 
 def vg_get_headers(
@@ -173,9 +173,16 @@ def vg_get_etf_inception_date(
 def create_12_month_periods(
     start_date_str: date, end_date_str: date
 ) -> List[List[str]]:
-    start_date = datetime.strptime(start_date_str, "%m-%d-%Y")
-    end_date = datetime.strptime(end_date_str, "%m-%d-%Y")
-
+    try:
+        start_date = datetime.strptime(start_date_str, "%m-%d-%Y")
+    except:
+        start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+    
+    try:
+        end_date = datetime.strptime(end_date_str, "%m-%d-%Y")
+    except:
+        end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+        
     periods = []
     current_period_start = start_date
     while current_period_start < end_date:
@@ -201,11 +208,18 @@ def is_valid_date(date_string, format_string="%m-%d-%Y") -> bool:
         return False
 
 
+# custom_start_date format: "%m-%d-%Y"
 def vg_get_historical_nav_prices(
-    tickers: List[str], raw_path: str = None, cj: http.cookiejar = None
+    tickers: List[str],
+    raw_path: str = None,
+    fetch_from_inception=False,
+    cj: http.cookiejar = None,
 ) -> dict[str, pd.DataFrame]:
     async def fetch(
-        session: aiohttp.ClientSession, url: str, ticker: str
+        session: aiohttp.ClientSession,
+        url: str,
+        ticker: str,
+        existing_df: pd.DataFrame,
     ) -> pd.DataFrame:
         try:
             referer = url.split(".com")[1]
@@ -242,7 +256,7 @@ def vg_get_historical_nav_prices(
                             print(e)
                             continue
 
-                    return {"ticker": ticker, "data": list}
+                    return {"ticker": ticker, "data": list, "existing": existing_df}
 
                 else:
                     raise Exception(f"Bad Status: {response.status}")
@@ -256,7 +270,17 @@ def vg_get_historical_nav_prices(
     ):
         tasks = []
         for ticker, fund_id in fund_ids.items():
-            inception_date_str = vg_get_etf_inception_date(ticker, cj, None)
+            existing_df = pd.DataFrame()
+            # only update by most recent week - no need to fetch since inception - if dne then fetch from inception
+            if (
+                os.path.exists(f"{raw_path}/{ticker}_nav_prices.xlsx")
+                and not fetch_from_inception
+            ):
+                existing_df = pd.read_excel(f"{raw_path}/{ticker}_nav_prices.xlsx")
+                inception_date_str = str(existing_df["date"].iloc[-1]).replace("/", "-")
+            else:
+                inception_date_str = vg_get_etf_inception_date(ticker, cj, None)
+
             today_date_str = datetime.today().strftime("%m-%d-%Y")
             targets = create_12_month_periods(inception_date_str, today_date_str)
             for date in targets:
@@ -265,13 +289,13 @@ def vg_get_historical_nav_prices(
 
                 print(begin, end, curr_url)
 
-                task = fetch(session, curr_url, ticker)
+                task = fetch(session, curr_url, ticker, existing_df)
                 tasks.append(task)
 
         return await asyncio.gather(*tasks)
 
     async def run_fetch_all(
-        fund_ids: List[Dict[str, Dict[str, str]]],
+        fund_ids: List[Dict[str, Dict[str, str | pd.DataFrame]]],
     ) -> List:
         async with aiohttp.ClientSession() as session:
             all_data = await get_promises(session, fund_ids)
@@ -279,24 +303,35 @@ def vg_get_historical_nav_prices(
 
     fund_ids = vg_multi_ticker_to_ticker_id(tickers, cj)
     nested = asyncio.run(run_fetch_all(fund_ids))
-    dict_dfs: Dict[str, List[Dict[str, str]]] = {}
+    dict_dfs: Dict[str, List(List[Dict[str, str]], pd.DataFrame | None)] = {}
     for data in nested:
         curr_ticker = data["ticker"]
         curr_nav_data: List[Dict[str, str]] = data["data"]
+        curr_existing_df: pd.DataFrame = data["existing"]
 
         if curr_ticker in dict_dfs:
-            dict_dfs[curr_ticker].extend(curr_nav_data)
+            dict_dfs[curr_ticker][0].extend(curr_nav_data)
         else:
-            dict_dfs[curr_ticker] = (curr_nav_data)
-            
-    print(dict_dfs)
-    dict_dfs = { ticker: pd.DataFrame(list) for ticker, list in dict_dfs.items() }
-    [
-        curr_df.to_excel(f"{raw_path}/{curr_ticker}_nav_prices.xlsx", index=False)
-        for ticker, curr_df in dict_dfs.items()
-        if raw_path
-    ]
-    return dict_dfs
+            dict_dfs[curr_ticker] = [None] * 2
+            dict_dfs[curr_ticker][0] = curr_nav_data
+            dict_dfs[curr_ticker][1] = curr_existing_df
+
+    result_dict_dfs: Dict[str, pd.DataFrame] = {}
+    for curr_ticker, list in dict_dfs.items():
+        list, existing_df = list
+        new_df = pd.DataFrame()
+        if not existing_df.empty:
+            copy_existing_df = existing_df.copy() 
+            to_add_df = pd.DataFrame(list)
+            new_df = pd.concat([copy_existing_df, to_add_df], ignore_index=True)
+            new_df = new_df.drop_duplicates(subset='date', keep="last")
+        else:
+            new_df = pd.DataFrame(list)
+    
+        result_dict_dfs[curr_ticker] = new_df
+        new_df.to_excel(f"{raw_path}/{curr_ticker}_nav_prices.xlsx", index=False)
+    
+    return result_dict_dfs
 
 
 def vg_daily_data(
