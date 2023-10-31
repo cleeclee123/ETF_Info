@@ -7,15 +7,11 @@ from typing import List
 from multiprocessing import Process
 from datetime import date, datetime, timedelta
 
-from vanguard.vg import (
-    vg_build_summary_book,
-    get_fund_data_file_path_by_ticker,
-    get_fund_flow_file_path_by_ticker,
-)
-from vanguard.vg_holdings import parallel_get_portfolio_data_api, ETFInfo, Asset
+from vanguard.vg import vg_build_summary_book
 from vanguard.vg_fund import vg_get_historical_nav_prices, vg_multi_ticker_to_ticker_id
-from FundFlows import multi_fetch_fund_flow_data, fetch_new_bearer_token
-from yahoofinance import multi_download_historical_data_yahoofinance
+from vanguard.vg_holdings import vg_parallel_get_portfolio_data_api, ETFInfo, Asset
+from FundFlows import multi_fetch_fund_flow_data, fetch_new_bearer_token, vg_get_fund_flow_file_path_by_ticker 
+from yahoofinance import multi_download_historical_data_yahoofinance, get_yahoofinance_data_file_path_by_ticker
 from treasuries import multi_download_year_treasury_par_yield_curve_rate
 
 
@@ -77,7 +73,7 @@ def vg_data_refresh(
         years, f"{current_directory}/utils/treasuries", cj
     )
 
-    df_vg_holdings_dict = parallel_get_portfolio_data_api(
+    df_vg_holdings_dict = vg_parallel_get_portfolio_data_api(
         [ETFInfo(t, Asset.fixed_income) for t in tickers],
         cj,
         f"{current_directory}/vanguard/vg_funds_holdings_clean_data",
@@ -99,22 +95,26 @@ def vg_data_refresh(
 if __name__ == "__main__":
     t0 = time.time()
 
-    # vg_build_summary_book(
-    #     ["VGSH", "VGIT", "VGLT", "EDV"],
-    #     r"C:\Users\chris\trade\curr_pos\vanguard\test.xlsx",
-    #     r"C:\Users\chris\trade\curr_pos\vanguard\vg_funds_summary\2023-10-27_vg_fund_info.xlsx",
-    # )
-
-    # from_date = datetime(2023, 1, 1)
-    # to_date = datetime.today()
-    # vg_data_refresh(["EDV", "VGLT", "VGIT", "VGSH"], from_date, to_date)
-
-    df_nav_dict = vg_get_historical_nav_prices(
-        ["EDV", "VGLT", "VGIT", "VGSH"],
-        r"C:\Users\chris\trade\curr_pos\vanguard\vg_nav_data",
-        None,
+    vg_build_summary_book(
+        ["VGSH", "VGIT", "VGLT", "EDV"],
+        r"C:\Users\chris\trade\curr_pos\vanguard\test.xlsx",
+        r"C:\Users\chris\trade\curr_pos\vanguard\vg_funds_summary\2023-10-27_vg_fund_info.xlsx",
     )
-    print(df_nav_dict)
 
+    from_date = datetime(2023, 1, 1)
+    # to_date = datetime.today()
+    # tickers =  ["VGLT", "VGIT", "VGSH", "EDV"]
+    # dict = vg_data_refresh(tickers, from_date, to_date)
+    # print(dict)
+
+    # df_nav_dict = vg_get_historical_nav_prices(
+    #     ["EDV", "VGLT", "VGIT", "VGSH"],
+    #     r"C:\Users\chris\trade\curr_pos\vanguard\vg_nav_data",
+    #     None,
+    # )
+    # print(df_nav_dict)
+
+    # print(vg_multi_ticker_to_ticker_id(['VGLT', 'VGIT', 'VGSH', 'BND']))
+    
     t1 = time.time()
     print("\033[94m {}\033[00m".format(t1 - t0), " seconds")

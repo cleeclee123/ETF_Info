@@ -1,10 +1,10 @@
 import time
 import browser_cookie3
 from vanguard.vg_holdings import (
-    single_get_portfolio_data_api,
-    parallel_get_portfolio_data_api,
-    get_portfolio_data_button,
-    get_fund_cash_flow_data,
+    vg_single_get_portfolio_data_api,
+    vg_parallel_get_portfolio_data_api,
+    vg_get_portfolio_data_button,
+    vg_get_fund_cash_flow_data,
     run_in_parallel,
     Asset,
     ETFInfo,
@@ -17,8 +17,8 @@ import http
 import re
 import pandas as pd
 from Bond import Bond, ZeroCouponBond
-from FundFlows import fetch_fund_flow_data, fetch_new_bearer_token
-from yahoofinance import download_historical_data_yahoofinance
+from FundFlows import vg_get_fund_flow_file_path_by_ticker
+from yahoofinance import get_yahoofinance_data_file_path_by_ticker
 
 
 def get_holding_file_path_by_ticker(ticker: str, cj: http.cookiejar = None) -> str:
@@ -41,7 +41,7 @@ def get_holding_file_path_by_ticker(ticker: str, cj: http.cookiejar = None) -> s
             ticker=ticker,
             asset_class=Asset.fixed_income if int(user_input) == 1 else Asset.equity,
         )
-        single_get_portfolio_data_api(
+        vg_single_get_portfolio_data_api(
             option,
             cj,
             f"{os.path.dirname(os.path.realpath(__file__))}/vg_funds_holdings_clean_data",
@@ -60,54 +60,6 @@ def get_holding_file_path_by_ticker(ticker: str, cj: http.cookiejar = None) -> s
 
     file_name = sorted(holdings, key=date_from_filename).pop()
     return f"{os.path.dirname(os.path.realpath(__file__))}/vg_funds_holdings_clean_data/{file_name}"
-
-
-def get_fund_flow_file_path_by_ticker(ticker: str, cj: http.cookiejar = None):
-    files = sorted(
-        os.listdir(f"{os.path.dirname(os.path.realpath(__file__))}/vg_fund_flow_data"),
-    )
-    tickers_with_data = [x for x in files if x.split("_")[0].lower() == ticker.lower()]
-    print(f"{os.path.dirname(os.path.realpath(__file__))}/vg_fund_flow_data")
-    date_from = datetime.datetime(2023, 1, 1)
-    date_to = datetime.datetime.today()
-
-    if len(tickers_with_data) == 0:
-        try:
-            token = fetch_new_bearer_token(cj)
-            bearer = token["fundApiKey"]
-            fetch_fund_flow_data(
-                ticker,
-                bearer,
-                date_from,
-                date_to,
-                f"{os.path.dirname(os.path.realpath(__file__))}/vg_fund_flow_data",
-            )
-        except Exception as e:
-            bearer = "0QE2aa6trhK3hOmkf5zXwz6Riy7UWdk4V6HYw3UdZcRZV3myoV9MOfwNLL6FKHrpTN7IF7g12GSZ6r44jAfjte0B3APAaQdWRWZtW2qhYJrAXXwkpYJDFdkCng97prr7N4JAXkCI1zB7EiXrFEY8CIQclMLgQk2XHBZJiqJSIEgtWckHK3UPLfm12X9rhME9ac7gvcF3fWDo8A66X6RHXr3g9jzKeC62th75S1t6juvWjQYDCz65i7UlRfTVWDVV"
-            fetch_fund_flow_data(
-                ticker,
-                bearer,
-                date_from,
-                date_to,
-                f"{os.path.dirname(os.path.realpath(__file__))}/vg_fund_flow_data",
-            )
-
-    return f"{os.path.dirname(os.path.realpath(__file__))}/vg_fund_flow_data/{ticker}_fund_flow_data.xlsx"
-
-
-def get_fund_data_file_path_by_ticker(ticker: str, cj: http.cookiejar = None):
-    dir = f"{os.path.abspath('')}/utils/yahoofinance"
-    files = sorted(
-        os.listdir(dir),
-    )
-    tickers_with_data = [x for x in files if x.split("_")[0].lower() == ticker.lower()]
-
-    if len(tickers_with_data) == 0:
-        from_date = datetime.datetime(2023, 1, 1)
-        to_date = datetime.datetime.today()
-        download_historical_data_yahoofinance(ticker, from_date, to_date, dir, cj)
-
-    return f"{dir}/{ticker}_yahoofin_historical_data.xlsx"
 
 
 def vg_build_summary_book(
@@ -211,8 +163,8 @@ def vg_build_summary_book(
                 axis=1,
             )
 
-        fund_data_path = get_fund_data_file_path_by_ticker(ticker)
-        fund_flow_path = get_fund_flow_file_path_by_ticker(ticker)
+        fund_data_path = get_yahoofinance_data_file_path_by_ticker(ticker)
+        fund_flow_path = vg_get_fund_flow_file_path_by_ticker(ticker, "vg_fund_flow_data")
         ticker_holding_dfs[ticker][1] = vg_daily_data(
             ticker, fund_data_path, fund_flow_path
         )

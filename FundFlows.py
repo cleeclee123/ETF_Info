@@ -113,7 +113,9 @@ def fetch_fund_flow_data(
     return None
 
 
-def get_etf_headers(bearer_token: str = None, cj: http.cookiejar = None) -> Dict[str, str]:
+def get_etf_headers(
+    bearer_token: str = None, cj: http.cookiejar = None
+) -> Dict[str, str]:
     if not bearer_token:
         bearer_token = fetch_new_bearer_token(cj)["fundApiKey"]
 
@@ -186,6 +188,40 @@ def multi_fetch_fund_flow_data(
     result = asyncio.run(run_fetch_all())
 
     return dict(zip(tickers, result))
+
+
+def vg_get_fund_flow_file_path_by_ticker(
+    ticker: str, dir: str, cj: http.cookiejar = None
+):
+    files = sorted(
+        os.listdir(f"{os.path.dirname(os.path.realpath(__file__))}/vanguard/{dir}"),
+    )
+    tickers_with_data = [x for x in files if x.split("_")[0].lower() == ticker.lower()]
+    date_from = datetime(2023, 1, 1)
+    date_to = datetime.today()
+
+    if len(tickers_with_data) == 0:
+        try:
+            token = fetch_new_bearer_token(cj)
+            bearer = token["fundApiKey"]
+            fetch_fund_flow_data(
+                ticker,
+                bearer,
+                date_from,
+                date_to,
+                f"{os.path.dirname(os.path.realpath(__file__))}/vanguard/{dir}",
+            )
+        except Exception as e:
+            bearer = "0QE2aa6trhK3hOmkf5zXwz6Riy7UWdk4V6HYw3UdZcRZV3myoV9MOfwNLL6FKHrpTN7IF7g12GSZ6r44jAfjte0B3APAaQdWRWZtW2qhYJrAXXwkpYJDFdkCng97prr7N4JAXkCI1zB7EiXrFEY8CIQclMLgQk2XHBZJiqJSIEgtWckHK3UPLfm12X9rhME9ac7gvcF3fWDo8A66X6RHXr3g9jzKeC62th75S1t6juvWjQYDCz65i7UlRfTVWDVV"
+            fetch_fund_flow_data(
+                ticker,
+                bearer,
+                date_from,
+                date_to,
+                f"{os.path.dirname(os.path.realpath(__file__))}/{dir}",
+            )
+
+    return f"{os.path.dirname(os.path.realpath(__file__))}/vanguard/{dir}/{ticker}_fund_flow_data.xlsx"
 
 
 if __name__ == "__main__":

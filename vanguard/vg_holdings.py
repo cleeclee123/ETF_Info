@@ -72,7 +72,7 @@ def run_in_parallel(*fns):
         p.join()
 
 
-def parallel_get_portfolio_data_api(
+def vg_parallel_get_portfolio_data_api(
     funds: List[ETFInfo], cj: http.cookiejar, clean_path: str
 ):
     async def fetch(
@@ -137,7 +137,7 @@ def parallel_get_portfolio_data_api(
     return holdings_data
 
 
-def single_get_portfolio_data_api(funds: ETFInfo, cj: http.cookiejar, clean_path: str):
+def vg_single_get_portfolio_data_api(funds: ETFInfo, cj: http.cookiejar, clean_path: str):
     ticker, asset = funds.ticker, funds.asset_class.value
     headers = vg_get_basic_headers(cj)
     headers[
@@ -169,7 +169,7 @@ def single_get_portfolio_data_api(funds: ETFInfo, cj: http.cookiejar, clean_path
     return holdings_data
 
 
-def get_portfolio_data_button(ticker: str, raw_path: str, clean_path: str):
+def vg_get_portfolio_data_button(ticker: str, raw_path: str, clean_path: str):
     url = f"https://advisors.vanguard.com/investments/products/{ticker}"
 
     options = webdriver.ChromeOptions()
@@ -216,7 +216,7 @@ def get_portfolio_data_button(ticker: str, raw_path: str, clean_path: str):
             os.rename(
                 f"{raw_path}\{output_file_name}", f"{raw_path}\{renamed_output_file}"
             )
-            clean_vg_holdings_data(
+            vg_clean_holdings_data(
                 renamed_output_file, formatted_date_str, ticker, clean_path
             )
             driver.quit()
@@ -225,7 +225,7 @@ def get_portfolio_data_button(ticker: str, raw_path: str, clean_path: str):
         os.system("taskkill /im chromedriver.exe")
 
 
-def clean_vg_holdings_data(
+def vg_clean_holdings_data(
     raw_path: str, as_of_date: str, ticker: str, clean_path: str
 ):
     df = pd.read_csv(filepath_or_buffer=raw_path, on_bad_lines="skip", skiprows=7)
@@ -237,7 +237,7 @@ def clean_vg_holdings_data(
     )
 
 
-def get_fund_cash_flow_data(split: int, base_raw_path: str):
+def vg_get_fund_cash_flow_data(split: int, base_raw_path: str):
     url = "https://institutional.vanguard.com/etf-cashflow/fundId"
 
     def get_webdriver_options(raw_path: str):

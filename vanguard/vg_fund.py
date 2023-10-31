@@ -352,8 +352,7 @@ def vg_daily_data(
         before = df.truncate(after=current_idx).iloc[:-1]
         return before.index[-1] if 0 < len(before) else None
 
-    current_date = datetime.today().strftime("%m-%d-%Y")
-    nav_price_path = f"{os.path.dirname(os.path.realpath(__file__))}/vg_nav_data/{ticker}_{current_date}_all_nav_prices.xlsx"
+    nav_price_path = f"{os.path.dirname(os.path.realpath(__file__))}/vg_nav_data/{ticker}_nav_prices.xlsx"
     nav_df = pd.read_excel(nav_price_path, parse_dates=["date"]).sort_values("date")
     nav_df["date"] = pd.to_datetime(nav_df["date"], format="%m/%d/%Y")
     nav_df = nav_df[nav_df["date"].dt.year == 2023]

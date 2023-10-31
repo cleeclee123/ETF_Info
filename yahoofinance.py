@@ -184,3 +184,18 @@ def multi_download_historical_data_yahoofinance(
                 df.to_excel(writer, sheet_name=f"{tickers[i]}", index=False)
 
     return dict(zip(tickers, dfs))
+
+
+def get_yahoofinance_data_file_path_by_ticker(ticker: str, cj: http.cookiejar = None):
+    dir = f"{os.path.abspath('')}/utils/yahoofinance"
+    files = sorted(
+        os.listdir(dir),
+    )
+    tickers_with_data = [x for x in files if x.split("_")[0].lower() == ticker.lower()]
+
+    if len(tickers_with_data) == 0:
+        from_date = datetime.datetime(2023, 1, 1)
+        to_date = datetime.datetime.today()
+        download_historical_data_yahoofinance(ticker, from_date, to_date, dir, cj)
+
+    return f"{dir}/{ticker}_yahoofin_historical_data.xlsx"
