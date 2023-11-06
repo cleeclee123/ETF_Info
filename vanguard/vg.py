@@ -12,13 +12,17 @@ from vanguard.vg_holdings import (
 from vanguard.vg_fund import vg_daily_data
 import os
 import datetime
-from typing import List
+from openpyxl import Workbook
+from typing import List, Dict
 import http
 import re
 import pandas as pd
 from Bond import Bond, ZeroCouponBond
-from FundFlows import vg_get_fund_flow_file_path_by_ticker
-from yahoofinance import get_yahoofinance_data_file_path_by_ticker
+from FundFlows import vg_get_fund_flow_file_path_by_ticker, multi_fetch_fund_flow_data
+from yahoofinance import (
+    get_yahoofinance_data_file_path_by_ticker,
+    multi_download_historical_data_yahoofinance,
+)
 
 
 def get_holding_file_path_by_ticker(ticker: str, cj: http.cookiejar = None) -> str:
@@ -60,6 +64,66 @@ def get_holding_file_path_by_ticker(ticker: str, cj: http.cookiejar = None) -> s
 
     file_name = sorted(holdings, key=date_from_filename).pop()
     return f"{os.path.dirname(os.path.realpath(__file__))}/vg_funds_holdings_clean_data/{file_name}"
+
+
+def vg_holdings_summary_sheet(df: pd.DataFrame, ticker: str) -> Dict[str, int]:
+    temp_df = pd.DataFrame()
+    temp_df["Weighted Maturity"] = df.apply(
+        lambda row: row["percentWeight"] * row["maturityDate"],
+        axis=1,
+    )
+    temp_df["Weighted Coupon"] = df.apply(
+        lambda row: row["percentWeight"] * row["couponRate"],
+        axis=1,
+    )
+    temp_df["Weighted YTM"] = df.apply(
+        lambda row: row["percentWeight"] * row["YTM"],
+        axis=1,
+    )
+    
+    if (ticker != "EDV"):
+        temp_df["Weighted Current Yield"] = df.apply(
+            lambda row: row["percentWeight"] * row["currentYield"],
+            axis=1,
+        )
+    else:
+        temp_df["Weighted Current Yield"] = df.apply(
+            lambda row: 0 * 0,
+            axis=1,
+        )
+
+    temp_df["Weighted Mac Duration"] = df.apply(
+        lambda row: row["percentWeight"] * row["macaulayDuration"],
+        axis=1,
+    )
+    temp_df["Weighted Mod Duration"] = df.apply(
+        lambda row: row["percentWeight"] * row["modifiedDuration"],
+        axis=1,
+    )
+    temp_df["Weighted Convexity"] = df.apply(
+        lambda row: row["percentWeight"] * row["convexity"],
+        axis=1,
+    )
+
+    summary_dict = {}
+    summary_dict["Weighted Avg Maturity"] = temp_df["Weighted Maturity"].sum() / 100
+    summary_dict["Weighted Avg Coupon"] = temp_df["Weighted Coupon"].sum() / 100
+    summary_dict["Weighted Avg YTM"] = temp_df["Weighted YTM"].sum() / 100
+    summary_dict["Weighted Avg Current Yield"] = (
+        temp_df["Weighted Current Yield"].sum() / 100
+    )
+    summary_dict["Weighted Avg Mac Duration"] = (
+        temp_df["Weighted Mac Duration"].sum() / 100
+    )
+    summary_dict["Weighted Avg Mod Duration"] = (
+        temp_df["Weighted Mod Duration"].sum() / 100
+    )
+    summary_dict["Weighted Avg Convexity"] = temp_df["Weighted Convexity"].sum() / 100
+    summary_dict["Face Amount"] = df["faceAmount"].sum()
+    summary_dict["Total Market Value"] = df["marketValue"].sum()
+    summary_dict["Holdings Count"] = df.shape[0]
+
+    return summary_dict
 
 
 def vg_build_summary_book(
@@ -164,7 +228,9 @@ def vg_build_summary_book(
             )
 
         fund_data_path = get_yahoofinance_data_file_path_by_ticker(ticker)
-        fund_flow_path = vg_get_fund_flow_file_path_by_ticker(ticker, "vg_fund_flow_data")
+        fund_flow_path = vg_get_fund_flow_file_path_by_ticker(
+            ticker, "vg_fund_flow_data"
+        )
         ticker_holding_dfs[ticker][1] = vg_daily_data(
             ticker, fund_data_path, fund_flow_path
         )
@@ -176,8 +242,24 @@ def vg_build_summary_book(
     summary_df.columns = summary_df.iloc[0]
     summary_df = summary_df.drop(0)
 
-    with pd.ExcelWriter(full_summary_book_path) as writer:
-        summary_df.to_excel(writer, sheet_name="summary", index=False)
+    with pd.ExcelWriter(full_summary_book_path, engine="openpyxl") as writer:
+        pd.DataFrame().to_excel(writer, index=False)
+        # summary_df.to_excel(writer, sheet_name="summary", index=False)
+
+        temp_dict = {}
         for ticker, dfs in ticker_holding_dfs.items():
+            temp_dict[ticker] = vg_holdings_summary_sheet(dfs[0], ticker)
             dfs[0].to_excel(writer, sheet_name=f"{ticker}_holdings", index=False)
             dfs[1].to_excel(writer, sheet_name=f"{ticker}_daily")
+
+        df_holding_summary = pd.DataFrame.from_dict(temp_dict, orient="index")
+        df_holding_summary = df_holding_summary.T
+        df_holding_summary.index = df_holding_summary.index.set_names(["ticker"])
+        df_holding_summary = df_holding_summary.reset_index().rename(
+            columns={df_holding_summary.index.name: "ticker"}
+        )
+
+        appended_summary_df = pd.concat(
+            [summary_df, df_holding_summary], ignore_index=True
+        )
+        appended_summary_df.to_excel(writer, sheet_name="summary", index=False)

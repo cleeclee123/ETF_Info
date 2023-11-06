@@ -21,6 +21,7 @@ def blk_get_headers(
     cookie_str = ""
     if cj:
         webbrowser.open("https://www.ishares.com/us/products/etf-investments")
+        webbrowser.open("https://www.blackrock.com/")
         cookies = {
             cookie.name: cookie.value
             for cookie in cj
@@ -145,5 +146,5 @@ if __name__ == "__main__":
     # df1 = blk_all_funds_info(raw_path)
     # df2 = blk_get_fund_data(["TLT"], raw_path)
     # df = blk_summary_book('TLT')
-    # print(df1)
+    # print(df)
     # print(df2)

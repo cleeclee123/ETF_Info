@@ -70,6 +70,47 @@ def vg_ticker_to_ticker_id(ticker: str, cj: http.cookiejar = None) -> int | None
         return None
 
 
+def vg_multi_vol_analytics(ticker: str, cj: http.cookiejar = None):
+    async def vg_fetch_vol(session: aiohttp.ClientSession, fund_id: int) -> Dict[str, int]:
+        url = f"https://advisors.vanguard.com/web/ecs/fpp-fas-product-details/analytics-and-volatility/fund-analytics/{fund_id}"
+        headers = vg_get_headers(
+            "advisor.vanguard.com",
+            f"/web/ecs/fpp-fas-product-details/analytics-and-volatility/fund-analytics/{fund_id}",
+            url,
+            cj,
+        )
+        async with session.get(url, headers=headers) as res:
+            json = await res.json()
+            return {key: json[key]["value"] for key in json}
+    
+    async def vg_fetch_risk(session: aiohttp.ClientSession, fund_id: int): 
+        url = f"https://advisors.vanguard.com/web/ecs/fpp-fas-product-details/risk-data/{fund_id}"
+        headers = vg_get_headers(
+            "advisor.vanguard.com",
+            f"/web/ecs/fpp-fas-product-details/risk-data/{fund_id}",
+            url,
+            cj,
+        )
+        async with session.get(url, headers=headers) as res:
+            return await res.json()
+    
+    async def get_promises(session: aiohttp.ClientSession, fund_id: int):
+        tasks = [vg_fetch_vol(session, fund_id), vg_fetch_risk(session, fund_id)]
+        return await asyncio.gather(*tasks)
+
+    async def run(fund_id: int) -> List[Dict]:
+        async with aiohttp.ClientSession() as session:
+            return await get_promises(session, fund_id)
+            
+    fund_id = vg_ticker_to_ticker_id(ticker, cj)
+    vol_dict, risk_dict = asyncio.run(run(fund_id))
+    
+    copy = vol_dict.copy()
+    copy.update(risk_dict)
+    
+    return copy
+
+
 def vg_multi_ticker_to_ticker_id(
     tickers: List[str], cj: http.cookiejar = None
 ) -> Dict[str, int]:
@@ -177,12 +218,12 @@ def create_12_month_periods(
         start_date = datetime.strptime(start_date_str, "%m-%d-%Y")
     except:
         start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
-    
+
     try:
         end_date = datetime.strptime(end_date_str, "%m-%d-%Y")
     except:
         end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
-        
+
     periods = []
     current_period_start = start_date
     while current_period_start < end_date:
@@ -321,16 +362,16 @@ def vg_get_historical_nav_prices(
         list, existing_df = list
         new_df = pd.DataFrame()
         if not existing_df.empty:
-            copy_existing_df = existing_df.copy() 
+            copy_existing_df = existing_df.copy()
             to_add_df = pd.DataFrame(list)
             new_df = pd.concat([copy_existing_df, to_add_df], ignore_index=True)
-            new_df = new_df.drop_duplicates(subset='date', keep="last")
+            new_df = new_df.drop_duplicates(subset="date", keep="last")
         else:
             new_df = pd.DataFrame(list)
-    
+
         result_dict_dfs[curr_ticker] = new_df
         new_df.to_excel(f"{raw_path}/{curr_ticker}_nav_prices.xlsx", index=False)
-    
+
     return result_dict_dfs
 
 

@@ -222,7 +222,7 @@ def vg_all_funds_data(parent_dir: str = None) -> pd.DataFrame:
 
     curr_date = datetime.today().strftime("%Y-%m-%d")
     wb_name = (
-        f"./{parent_dir}/{curr_date}_vg_fund_info.xlsx"
+        f"{parent_dir}/{curr_date}_vg_fund_info.xlsx"
         if (parent_dir)
         else f"{curr_date}_vg_fund_info.xlsx"
     )

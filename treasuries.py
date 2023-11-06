@@ -188,6 +188,18 @@ def multi_download_year_treasury_par_yield_curve_rate(
 
     yield_df = pd.concat(dfs, ignore_index=True)
     years_str = str.join("_", [str(x) for x in years])
-    yield_df.to_excel(os.path.join(raw_path, f"{years_str}_daily_treasury_rates.xlsx"), index=False)
+    yield_df.to_excel(
+        os.path.join(raw_path, f"{years_str}_daily_treasury_rates.xlsx"), index=False
+    )
 
     return yield_df
+
+
+if __name__ == "__main__":
+    years = [2023, 2022, 2021, 2020, 2019]
+
+    df_treasuries = multi_download_year_treasury_par_yield_curve_rate(
+        years, r"C:\Users\chris\trade\curr_pos\utils\treasuries"
+    )
+    
+    print(df_treasuries)

@@ -171,6 +171,19 @@ class Bond:
         except ValueError as e:
             print(f"Invalid date format: {e}")
             return None
+        
+    
+    @staticmethod
+    def calc_time_to_maturity_blk(date_string):
+        try:
+            maturity_date = datetime.strptime(date_string, "%b %d, %Y")
+            current_date = datetime.now()
+            days_to_maturity = (maturity_date - current_date).days
+            years_to_maturity = days_to_maturity / 365.0
+            return years_to_maturity
+        except ValueError as e:
+            print(f"Invalid date format: {e}")
+            return None
 
 
 class ZeroCouponBond:
