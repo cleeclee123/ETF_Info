@@ -377,59 +377,64 @@ def get_options_chain_yahoofinance(
     results = asyncio.run(run_fetch_all())
     dfs = {}
     for_big_wb = []
-    for options_data, exp_date in results:
-        strike_prices = list(options_data.keys())
-        temp = []
-        for strike in strike_prices:
-            call_raw_dict = options_data[strike]["call"]
-            put_raw_dict = options_data[strike]["put"]
+    
+    try:
+        for options_data, exp_date in results:
+            strike_prices = list(options_data.keys())
+            temp = []
+            for strike in strike_prices:
+                call_raw_dict = options_data[strike]["call"]
+                put_raw_dict = options_data[strike]["put"]
 
-            call_dict = {
-                f"{key}_call": value
-                for key, value in call_raw_dict.items()
-                if key != "strike"
-            }
-            put_dict = {
-                f"{key}_put": value
-                for key, value in put_raw_dict.items()
-                if key != "strike"
-            }
-            curr_strike_straddle_dict = {**call_dict, **put_dict}
-            curr_strike_straddle_dict["strike"] = (
-                call_raw_dict["strike"]
-                if call_raw_dict["strike"]
-                else put_raw_dict["strike"]
-            )
+                call_dict = {
+                    f"{key}_call": value
+                    for key, value in call_raw_dict.items()
+                    if key != "strike"
+                }
+                put_dict = {
+                    f"{key}_put": value
+                    for key, value in put_raw_dict.items()
+                    if key != "strike"
+                }
+                curr_strike_straddle_dict = {**call_dict, **put_dict}
+                curr_strike_straddle_dict["strike"] = (
+                    call_raw_dict["strike"]
+                    if call_raw_dict["strike"]
+                    else put_raw_dict["strike"]
+                )
 
-            print(curr_strike_straddle_dict)
-            temp.append(curr_strike_straddle_dict)
+                print(curr_strike_straddle_dict)
+                temp.append(curr_strike_straddle_dict)
+
+                if big_wb:
+                    copy_curr_strike_straddle_dict = curr_strike_straddle_dict.copy()
+                    copy_curr_strike_straddle_dict["expirationDate"] = exp_date
+                    for_big_wb.append(copy_curr_strike_straddle_dict)
+
+            curr_exp_straddle_df = pd.DataFrame(temp)
+            curr_exp_straddle_df.set_index("strike")
+            dfs[exp_date] = curr_exp_straddle_df
+
+        with pd.ExcelWriter(raw_path, engine="openpyxl") as writer:
+            pd.DataFrame().to_excel(writer, index=False)
+            for exp_date, df in dfs.items():
+                cols = list(df.columns)
+                last_price_index = cols.index("lastPrice_call")
+                cols.remove("strike")
+                cols.insert(last_price_index + 1, "strike")
+                df = df[cols]
+                df.to_excel(
+                    writer,
+                    sheet_name=f"{datetime.fromtimestamp(exp_date).strftime('%m-%d-%Y')}",
+                    index=False,
+                )
 
             if big_wb:
-                copy_curr_strike_straddle_dict = curr_strike_straddle_dict.copy()
-                copy_curr_strike_straddle_dict["expirationDate"] = exp_date
-                for_big_wb.append(copy_curr_strike_straddle_dict)
-
-        curr_exp_straddle_df = pd.DataFrame(temp)
-        curr_exp_straddle_df.set_index("strike")
-        dfs[exp_date] = curr_exp_straddle_df
-
-    with pd.ExcelWriter(raw_path, engine="openpyxl") as writer:
-        pd.DataFrame().to_excel(writer, index=False)
-        for exp_date, df in dfs.items():
-            cols = list(df.columns)
-            last_price_index = cols.index("lastPrice_call")
-            cols.remove("strike")
-            cols.insert(last_price_index + 1, "strike")
-            df = df[cols]
-            df.to_excel(
-                writer,
-                sheet_name=f"{datetime.fromtimestamp(exp_date).strftime('%m-%d-%Y')}",
-                index=False,
-            )
-
-        if big_wb:
-            big_df = pd.DataFrame(for_big_wb)
-            big_df.to_excel(writer, sheet_name="all", index=False)
+                big_df = pd.DataFrame(for_big_wb)
+                big_df.to_excel(writer, sheet_name="all", index=False)
+                
+    except Exception as e:
+        print(e)
 
     return dfs
 
@@ -443,7 +448,7 @@ if __name__ == "__main__":
     # list = get_option_expiration_dates_yahoofinance('TLT')
     # print(list)
 
-    ticker = "TLT"
+    ticker = "SPY"
     data = get_options_chain_yahoofinance(
         ticker,
         fr"C:\Users\chris\trade\curr_pos\utils\yahoofinance\option_chains\{ticker}_option_chain.xlsx",
