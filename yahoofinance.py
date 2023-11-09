@@ -448,7 +448,7 @@ if __name__ == "__main__":
     # list = get_option_expiration_dates_yahoofinance('TLT')
     # print(list)
 
-    ticker = "SPY"
+    ticker = "ZROZ"
     data = get_options_chain_yahoofinance(
         ticker,
         fr"C:\Users\chris\trade\curr_pos\utils\yahoofinance\option_chains\{ticker}_option_chain.xlsx",

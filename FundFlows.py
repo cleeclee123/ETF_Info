@@ -11,23 +11,9 @@ import asyncio
 from typing import List, Dict
 
 
-def fetch_new_bearer_token(cj: http.cookiejar = None) -> Dict[str, str] | None:
-    webbrowser.open("https://www.etf.com/")
-    cookies = {}
-    try:
-        cookies = {
-            cookie.name: cookie.value for cookie in cj if "etf.com" in cookie.domain
-        }
-    except Exception as e:
-        print("Failed to Open Cookie Jar")
-        print(e)
-        return None
-
-    cookies["_gat_G-NFBGF6073J"] = 1
-    cookies["kw.pv_session	"] = 10
-    cookies["kw.session_ts"] = "1697501453497"  # find dynmaic way to get this
-    cookies_str = "; ".join([f"{key}={value}" for key, value in cookies.items()])
-
+def fetch_new_bearer_token(
+    cj: http.cookiejar = None, open_chrome=False
+) -> Dict[str, str] | None:
     headers = {
         "authority": "www.etf.com",
         "method": "GET",
@@ -37,7 +23,6 @@ def fetch_new_bearer_token(cj: http.cookiejar = None) -> Dict[str, str] | None:
         "Accept-Encoding": "gzip, deflate, br",
         "Accept-Language": "en-US,en;q=0.9",
         "Cache-Control": "max-age=0",
-        "Cookie": cookies_str,
         "Dnt": "1",
         "Referer": "https://www.etf.com/",
         "Sec-Ch-Ua": '"Chromium";v="118", "Google Chrome";v="118", "Not=A?Brand";v="99"',
@@ -48,12 +33,31 @@ def fetch_new_bearer_token(cj: http.cookiejar = None) -> Dict[str, str] | None:
         "Sec-Fetch-Site": "same-origin",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
     }
+    
+    if open_chrome:
+        webbrowser.open("https://www.etf.com/")
+        time.sleep(3)
+        os.system("taskkill /im chrome.exe /f")
+    
+    if cj:
+        print('CJ IS DEFINED')
+        cookies = {}
+        try:
+            cookies = {
+                cookie.name: cookie.value for cookie in cj if "etf.com" in cookie.domain
+            }
+            cookies["_gat_G-NFBGF6073J"] = 1
+            cookies["kw.pv_session	"] = 10
+            cookies["kw.session_ts"] = "1697501453497"  # find dynmaic way to get this
+            cookies_str = "; ".join(
+                [f"{key}={value}" for key, value in cookies.items()]
+            )
+            headers["Cookie"] = cookies_str
+        except Exception as e:
+            print(e)
 
     url = "https://www.etf.com/api/v1/api-details"
     res = requests.get(url, headers=headers)
-
-    time.sleep(3)
-    os.system("taskkill /im chrome.exe /f")
 
     if res.status_code == 200 or res.status_code == 201:
         json = res.json()
@@ -149,7 +153,7 @@ def multi_fetch_fund_flow_data(
     date_to: date,
     raw_path: str,
     cj: http.cookiejar = None,
-):
+) -> Dict[str, List[Dict[str, str]]]:
     async def fetch(
         session: aiohttp.ClientSession, url: str, curr_ticker: int
     ) -> pd.DataFrame:
@@ -226,7 +230,7 @@ def vg_get_fund_flow_file_path_by_ticker(
 
 if __name__ == "__main__":
     # example
-    cj = browser_cookie3.chrome()
+    # cj = browser_cookie3.chrome()
     date_from = datetime(2023, 1, 1)
     date_to = datetime.today()
     raw_path = r"C:\Users\chris\ETF_Fund_Flows\data\flow"
@@ -235,29 +239,13 @@ if __name__ == "__main__":
     # tickers = ["SGOV", "SHV", "SHY", "IEI", "IEF", "TLH", "TLT", "GOVZ"]
     tickers = [
         "TLT",
-        "VGLT",
-        "EDV",
-        "TMF",
-        "ZROZ",
-        "TLTW",
-        "LTPZ",
-        "TBT",
-        "DFIP",
-        "TMV",
-        "TBF",
-        "GOVZ",
-        "IBTL",
-        "TTT",
-        "PTRB",
-        "UBT",
-        "SBND",
-        "BBLB",
-        "TYA",
-        "CPII",
-        "KDRN",
     ]
     data = multi_fetch_fund_flow_data(tickers, bearer, date_from, date_to, raw_path)
+
     print(data)
+
+    for ticker, flow in data.items():
+        print("Fund Flow Data Date: ", ticker, flow.pop())
 
     # tickers = ["QQQ"]
     # for ticker in tickers:

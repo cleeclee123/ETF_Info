@@ -8,22 +8,25 @@ import os
 import urllib.parse
 import bs4
 import numpy as np
+import time
 from datetime import datetime, timedelta, date
 from typing import List, Dict, Tuple
 
 
 def vg_get_headers(
-    auth: str, path: str, referer: str, cj: http.cookiejar = None
+    auth: str, path: str, referer: str, cj: http.cookiejar = None, open_chrome=False
 ) -> Dict[str, str]:
     cookie_str = ""
-    if cj:
+    if open_chrome:
         webbrowser.open("https://advisors.vanguard.com/advisors-home")
         webbrowser.open("https://investor.vanguard.com/home")
+        time.sleep(3)
+        os.system("taskkill /im chrome.exe /f")
+    if cj:
         cookies = {
             cookie.name: cookie.value for cookie in cj if "vangaurd" in cookie.domain
         }
         cookie_str = "; ".join([f"{key}={value}" for key, value in cookies.items()])
-        os.system("taskkill /im chrome.exe /f")
 
     headers = {
         "authority": auth,
@@ -71,7 +74,9 @@ def vg_ticker_to_ticker_id(ticker: str, cj: http.cookiejar = None) -> int | None
 
 
 def vg_multi_vol_analytics(ticker: str, cj: http.cookiejar = None):
-    async def vg_fetch_vol(session: aiohttp.ClientSession, fund_id: int) -> Dict[str, int]:
+    async def vg_fetch_vol(
+        session: aiohttp.ClientSession, fund_id: int
+    ) -> Dict[str, int]:
         url = f"https://advisors.vanguard.com/web/ecs/fpp-fas-product-details/analytics-and-volatility/fund-analytics/{fund_id}"
         headers = vg_get_headers(
             "advisor.vanguard.com",
@@ -82,8 +87,8 @@ def vg_multi_vol_analytics(ticker: str, cj: http.cookiejar = None):
         async with session.get(url, headers=headers) as res:
             json = await res.json()
             return {key: json[key]["value"] for key in json}
-    
-    async def vg_fetch_risk(session: aiohttp.ClientSession, fund_id: int): 
+
+    async def vg_fetch_risk(session: aiohttp.ClientSession, fund_id: int):
         url = f"https://advisors.vanguard.com/web/ecs/fpp-fas-product-details/risk-data/{fund_id}"
         headers = vg_get_headers(
             "advisor.vanguard.com",
@@ -93,7 +98,7 @@ def vg_multi_vol_analytics(ticker: str, cj: http.cookiejar = None):
         )
         async with session.get(url, headers=headers) as res:
             return await res.json()
-    
+
     async def get_promises(session: aiohttp.ClientSession, fund_id: int):
         tasks = [vg_fetch_vol(session, fund_id), vg_fetch_risk(session, fund_id)]
         return await asyncio.gather(*tasks)
@@ -101,13 +106,13 @@ def vg_multi_vol_analytics(ticker: str, cj: http.cookiejar = None):
     async def run(fund_id: int) -> List[Dict]:
         async with aiohttp.ClientSession() as session:
             return await get_promises(session, fund_id)
-            
+
     fund_id = vg_ticker_to_ticker_id(ticker, cj)
     vol_dict, risk_dict = asyncio.run(run(fund_id))
-    
+
     copy = vol_dict.copy()
     copy.update(risk_dict)
-    
+
     return copy
 
 

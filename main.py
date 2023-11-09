@@ -8,11 +8,22 @@ from multiprocessing import Process
 from datetime import date, datetime, timedelta
 
 from vanguard.vg import vg_build_summary_book
-from vanguard.vg_fund import vg_get_historical_nav_prices, vg_multi_ticker_to_ticker_id, vg_multi_vol_analytics
+from vanguard.vg_fund import (
+    vg_get_historical_nav_prices,
+    vg_multi_ticker_to_ticker_id,
+    vg_multi_vol_analytics,
+)
 from vanguard.vg_holdings import vg_parallel_get_portfolio_data_api, ETFInfo, Asset
 from vanguard.vg_summary import vg_all_funds_data
-from FundFlows import multi_fetch_fund_flow_data, fetch_new_bearer_token, vg_get_fund_flow_file_path_by_ticker 
-from yahoofinance import multi_download_historical_data_yahoofinance, get_yahoofinance_data_file_path_by_ticker
+from FundFlows import (
+    multi_fetch_fund_flow_data,
+    fetch_new_bearer_token,
+    vg_get_fund_flow_file_path_by_ticker,
+)
+from yahoofinance import (
+    multi_download_historical_data_yahoofinance,
+    get_yahoofinance_data_file_path_by_ticker,
+)
 from treasuries import multi_download_year_treasury_par_yield_curve_rate
 
 
@@ -58,7 +69,6 @@ def vg_data_refresh(
         to_date,
         f"{current_directory}/utils/yahoofinance",
         cj,
-        False,
     )
 
     df_ff_dict = fund_flow_wrapper(
@@ -69,7 +79,11 @@ def vg_data_refresh(
         cj,
     )
 
-    years = [from_date.year, to_date.year]
+    years = (
+        [from_date.year, to_date.year]
+        if from_date.year != to_date.year
+        else [from_date.year]
+    )
     df_treasuries = multi_download_year_treasury_par_yield_curve_rate(
         years, f"{current_directory}/utils/treasuries", cj
     )
@@ -83,6 +97,9 @@ def vg_data_refresh(
     df_nav_dict = vg_get_historical_nav_prices(
         tickers, f"{current_directory}/vanguard/vg_nav_data", cj
     )
+    
+    for ticker, flow in df_ff_dict.items():
+        print('Fund Flow Data Date: ', ticker, flow.pop())   
 
     return {
         "yahoo_finance": df_yf_dict,
@@ -95,24 +112,23 @@ def vg_data_refresh(
 
 if __name__ == "__main__":
     t0 = time.time()
-    
+
     # list = vg_multi_vol_analytics('VGSH')
     # print(json.dumps(list, indent=4))
-            
+
     # df = vg_all_funds_data(r'C:\Users\chris\trade\curr_pos\vanguard\vg_funds_summary')
     # print(df.head())
-    
-    vg_build_summary_book(
-        ["VGSH", "VGIT", "VGLT", "EDV"],
-        r"C:\Users\chris\trade\curr_pos\vanguard\vg_summary_book.xlsx",
-        r"C:\Users\chris\trade\curr_pos\vanguard\vg_funds_summary\2023-11-06_vg_fund_info.xlsx",
-    )
 
-    # from_date = datetime(2023, 1, 1)
-    # to_date = datetime.today()
-    # tickers =  ["VGLT", "VGIT", "VGSH", "EDV"]
-    # dict = vg_data_refresh(tickers, from_date, to_date)
-    # print(dict)
+    # vg_build_summary_book(
+    #     ["VGSH", "VGIT", "VGLT", "EDV"],
+    #     r"C:\Users\chris\trade\curr_pos\vanguard\vg_summary_book.xlsx",
+    #     r"C:\Users\chris\trade\curr_pos\vanguard\vg_funds_summary\2023-11-06_vg_fund_info.xlsx",
+    # )
+
+    from_date = datetime(2023, 1, 1)
+    to_date = datetime.today()
+    tickers = ["VGLT", "VGIT", "VGSH", "EDV"]
+    dict = vg_data_refresh(tickers, from_date, to_date)
 
     # df_nav_dict = vg_get_historical_nav_prices(
     #     ["EDV", "VGLT", "VGIT", "VGSH"],
@@ -122,6 +138,6 @@ if __name__ == "__main__":
     # print(df_nav_dict)
 
     # print(vg_multi_ticker_to_ticker_id(['VGLT', 'VGIT', 'VGSH', 'BND']))
-    
+
     t1 = time.time()
     print("\033[94m {}\033[00m".format(t1 - t0), " seconds")

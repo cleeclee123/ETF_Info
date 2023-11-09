@@ -5,19 +5,22 @@ import http
 import os
 from typing import Tuple
 import webbrowser
-
+import time
 
 # need to update path
-def vg_get_basic_headers(cj: http.cookiejar) -> Tuple[dict, str]:
+def vg_get_basic_headers(cj: http.cookiejar, open_chrome=False) -> Tuple[dict, str]:
     # gets short term cookies
-    webbrowser.open(f"https://advisors.vanguard.com/advisors-home")
+    if open_chrome:
+        webbrowser.open(f"https://advisors.vanguard.com/advisors-home")
+        time.sleep(3)
+        os.system("taskkill /im chrome.exe /f")
+        
     try:
         cookies = {
             cookie.name: cookie.value for cookie in cj if "vangaurd" in cookie.domain
         }
         cookies_str = "; ".join([f"{key}={value}" for key, value in cookies.items()])
     except Exception as e:
-        print('Failed to Open Cookie Jar')
         cookies_str = ""
 
     headers = {
@@ -42,7 +45,6 @@ def vg_get_basic_headers(cj: http.cookiejar) -> Tuple[dict, str]:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
     }
     
-    os.system("taskkill /im chrome.exe /f")
 
     return headers
 
