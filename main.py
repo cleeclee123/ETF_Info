@@ -15,7 +15,7 @@ from vanguard.vg_fund import (
 )
 from vanguard.vg_holdings import vg_parallel_get_portfolio_data_api, ETFInfo, Asset
 from vanguard.vg_summary import vg_all_funds_data
-from FundFlows import (
+from fund_flows import (
     multi_fetch_fund_flow_data,
     fetch_new_bearer_token,
     vg_get_fund_flow_file_path_by_ticker,

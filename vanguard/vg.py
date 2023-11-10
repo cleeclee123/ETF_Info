@@ -18,7 +18,7 @@ import http
 import re
 import pandas as pd
 from Bond import Bond, ZeroCouponBond
-from FundFlows import vg_get_fund_flow_file_path_by_ticker, multi_fetch_fund_flow_data
+from fund_flows import vg_get_fund_flow_file_path_by_ticker, multi_fetch_fund_flow_data
 from yahoofinance import (
     get_yahoofinance_data_file_path_by_ticker,
     multi_download_historical_data_yahoofinance,

@@ -236,10 +236,8 @@ if __name__ == "__main__":
     raw_path = r"C:\Users\chris\ETF_Fund_Flows\data\flow"
 
     bearer = "0QE2aa6trhK3hOmkf5zXwz6Riy7UWdk4V6HYw3UdZcRZV3myoV9MOfwNLL6FKHrpTN7IF7g12GSZ6r44jAfjte0B3APAaQdWRWZtW2qhYJrAXXwkpYJDFdkCng97prr7N4JAXkCI1zB7EiXrFEY8CIQclMLgQk2XHBZJiqJSIEgtWckHK3UPLfm12X9rhME9ac7gvcF3fWDo8A66X6RHXr3g9jzKeC62th75S1t6juvWjQYDCz65i7UlRfTVWDVV"
-    # tickers = ["SGOV", "SHV", "SHY", "IEI", "IEF", "TLH", "TLT", "GOVZ"]
-    tickers = [
-        "TLT",
-    ]
+    tickers = ["USFR", "FLOT", "TFLO", "BIL", "TBIL", "VGLT", "VGIT", "VGSH", "EDV", "TLT", "GOVZ", "ZROZ", "SHY", "UTWO", "SPTS", "SPTS", "FTSD", "TUR"]
+
     data = multi_fetch_fund_flow_data(tickers, bearer, date_from, date_to, raw_path)
 
     print(data)
