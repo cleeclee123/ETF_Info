@@ -238,8 +238,11 @@ if __name__ == "__main__":
     raw_path = r'C:\Users\chris\trade\curr_pos\flows' 
 
     bearer = "0QE2aa6trhK3hOmkf5zXwz6Riy7UWdk4V6HYw3UdZcRZV3myoV9MOfwNLL6FKHrpTN7IF7g12GSZ6r44jAfjte0B3APAaQdWRWZtW2qhYJrAXXwkpYJDFdkCng97prr7N4JAXkCI1zB7EiXrFEY8CIQclMLgQk2XHBZJiqJSIEgtWckHK3UPLfm12X9rhME9ac7gvcF3fWDo8A66X6RHXr3g9jzKeC62th75S1t6juvWjQYDCz65i7UlRfTVWDVV"
-    # tickers = ["USFR", "FLOT", "TFLO", "BIL", "TBIL", "VGLT", "VGIT", "VGSH", "EDV", "TLT", "GOVZ", "ZROZ", "SHY", "UTWO", "SPTS", "SPTS", "FTSD", "TUR"]
-    tickers = ["BILS", "BIL"]
+    # tickers = ["USFR", "FLOT", "TFLO", "BIL", "BILS", "TBIL", "VGLT", "VGIT", "VGSH", "EDV", "TLT", "GOVZ", "ZROZ", "SHY", "UTWO", "SPTS", "SPTS", "FTSD", "TUR"]
+    # tickers = ["SPTL", "TMF", "LTPZ", "DFIP", "GOVZ", "TYA"]
+    
+    tickers = ["HYG", "USHY", "JNK", "BKLN", "SHYG", "SRLN", "SJNK", "HYLB", "SPHY", "ANGL", "FTSL", "HYLS", "FALN", "HYGV", "HYS", "BSJP", "BSJO", "YEAR", "PHB", "BSJN", "BBHY", "IBHD", "BSJQ", "HYEM", "IBHE"]
+    # tickers = ["HYDB", ""]
     data = multi_fetch_fund_flow_data(tickers, bearer, date_from, date_to, raw_path)
 
     print(data)

@@ -49,8 +49,6 @@ def download_daily_treasury_par_yield_curve_rates(
             service=ChromeService(ChromeDriverManager().install()), options=options
         ) as driver:
             driver.get(url)
-            full_url = driver.current_url + "#portfolio"
-            driver.get(full_url)
 
             download_button_xpath = "/html/body/div[1]/div/div[3]/div/section/div/div/div[2]/div/div/div[1]/div/a"
             WebDriverWait(driver, 10).until(
@@ -195,11 +193,110 @@ def multi_download_year_treasury_par_yield_curve_rate(
     return yield_df
 
 
-if __name__ == "__main__":
-    years = [2023, 2022, 2021, 2020, 2019]
-
-    df_treasuries = multi_download_year_treasury_par_yield_curve_rate(
-        years, r"C:\Users\chris\trade\curr_pos\utils\treasuries"
-    )
+def base_fred_data_fetcher(url: str, raw_path: str, filename: str, kill_chrome: bool) -> pd.DataFrame:
+    options = webdriver.ChromeOptions()
+    # options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--ignore-certificate-errors")
+    options.add_experimental_option("excludeSwitches", ["enable-logging"])
+    prefs = {
+        "profile.default_content_settings.popups": 0,
+        "download.default_directory": raw_path,
+        "download.prompt_for_download": False,
+        "download.directory_upgrade": True,
+    }
+    options.add_experimental_option("prefs", prefs)
     
-    print(df_treasuries)
+    df_temp = pd.DataFrame()
+    
+    try:
+        with webdriver.Chrome(
+            service=ChromeService(ChromeDriverManager().install()), options=options
+        ) as driver:
+            driver.get(url)
+            
+            max_xpath = "/html/body/div[1]/div[1]/div/div[2]/div[2]/div[2]/div/div[1]/span/span[7]"
+            menu_xpath = "/html/body/div[1]/div[1]/div/div[1]/div/div/div/button/span"
+            download_xpath = (
+                "/html/body/div[1]/div[1]/div/div[1]/div/div/div/ul/li[1]/a"
+            )
+
+            WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, max_xpath))
+            )
+            el = driver.find_element(By.XPATH, max_xpath)
+            # sort of hacky but works - makes sure that we have max data
+            for _ in range(20):
+                el.click() 
+
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, menu_xpath))
+            )
+            driver.find_element(By.XPATH, menu_xpath).click()
+
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, download_xpath))
+            )
+            driver.find_element(By.XPATH, download_xpath).click()
+
+            time.sleep(2)
+
+            output_file_name = latest_download_file(raw_path)
+            renamed_file = f"{raw_path}/{filename}"
+            print(output_file_name)
+
+            df_temp = pd.read_excel(f"{raw_path}\{output_file_name}")
+            df_temp = df_temp.iloc[9:]
+            new_header = df_temp.iloc[0]
+            df_temp = df_temp[1:]
+            df_temp.columns = new_header
+            df_temp = df_temp.reset_index()
+            df_temp = df_temp.drop("index", axis=1)
+            df_temp.to_excel(renamed_file, index=False)
+
+            os.remove(f"{raw_path}\{output_file_name}")
+    
+    except Exception as e:
+        print(e)
+        
+    finally:
+        driver.quit()
+        if kill_chrome:
+            os.system("taskkill /im chromedriver.exe")
+
+    return df_temp
+
+
+def get_2s10s_fred_data(raw_path: str, kill_chrome = False) -> pd.DataFrame:
+    url = "https://fred.stlouisfed.org/series/T10Y2Y"
+    filename = "2s10s_data.xlsx"
+    return base_fred_data_fetcher(url, raw_path, filename, kill_chrome)
+
+
+def get_5s30s_fred_data(raw_path: str, kill_chrome = False) -> pd.DataFrame:
+    url = "https://fred.stlouisfed.org/graph/?g=Ina"
+    filename = "5s30s_data.xlsx"
+    return base_fred_data_fetcher(url, raw_path, filename, kill_chrome)
+
+
+if __name__ == "__main__":
+    start = time.time()
+    # years = [2023, 2022, 2021, 2020, 2019]
+
+    # df_treasuries = multi_download_year_treasury_par_yield_curve_rate(
+    #     years, r"C:\Users\chris\trade\curr_pos\utils\treasuries"
+    # )
+
+    # print(df_treasuries)
+
+    raw_path = r"C:\Users\chris\trade\curr_pos\treasuries"
+    df1 = get_2s10s_fred_data(raw_path)
+    df2 = get_5s30s_fred_data(raw_path)
+    
+    print(df1)
+    print(df2)
+    
+    end = time.time()
+    
+    print(end - start, " sec")

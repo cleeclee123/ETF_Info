@@ -105,16 +105,16 @@ if __name__ == "__main__":
     # df = vg_all_funds_data(r'C:\Users\chris\trade\curr_pos\vanguard\vg_funds_summary')
     # print(df.head())
 
-    vg_build_summary_book(
-        ["VGSH", "VGIT", "VGLT", "EDV"],
-        r"C:\Users\chris\trade\curr_pos\vanguard\vg_summary_book\vg_summary_book.xlsx",
-        r"C:\Users\chris\trade\curr_pos\vanguard\vg_funds_info\2023-11-06_vg_fund_info.xlsx",
-    )
+    # vg_build_summary_book(
+    #     ["VGSH", "VGIT", "VGLT", "EDV"],
+    #     r"C:\Users\chris\trade\curr_pos\vanguard\vg_summary_book\vg_summary_book.xlsx",
+    #     r"C:\Users\chris\trade\curr_pos\vanguard\vg_funds_info\2023-11-06_vg_fund_info.xlsx",
+    # )
 
-    # from_date = datetime(2023, 1, 1)
-    # to_date = datetime.today()
-    # tickers = ["VGLT", "VGIT", "VGSH", "EDV"]
-    # dict = vg_data_refresh(tickers, from_date, to_date)
+    from_date = datetime(2023, 1, 1)
+    to_date = datetime.today()
+    tickers = ["VGLT", "VGIT", "VGSH", "EDV"]
+    dict = vg_data_refresh(tickers, from_date, to_date)
 
     # df_nav_dict = vg_get_historical_nav_prices(
     #     ["EDV", "VGLT", "VGIT", "VGSH"],
