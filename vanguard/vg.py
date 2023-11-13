@@ -1,27 +1,20 @@
-import time
-import browser_cookie3
-from vanguard.vg_holdings import (
-    vg_single_get_portfolio_data_api,
-    vg_parallel_get_portfolio_data_api,
-    vg_get_portfolio_data_button,
-    vg_get_fund_cash_flow_data,
-    run_in_parallel,
-    Asset,
-    ETFInfo,
-)
-from vanguard.vg_fund import vg_daily_data
-import os
-import datetime
-from openpyxl import Workbook
-from typing import List, Dict
 import http
 import re
+import os
+import datetime
 import pandas as pd
-from Bond import Bond, ZeroCouponBond
-from fund_flows import vg_get_fund_flow_file_path_by_ticker, multi_fetch_fund_flow_data
-from yahoofinance import (
-    get_yahoofinance_data_file_path_by_ticker,
-    multi_download_historical_data_yahoofinance,
+
+from typing import List, Dict
+
+from common.Bond import Bond, ZeroCouponBond
+from common.fund_flows import get_fund_flow_file_path_by_ticker
+from common.yahoofinance import get_yahoofinance_data_file_path_by_ticker
+
+from vanguard.vg_fund import vg_daily_data
+from vanguard.vg_holdings import (
+    vg_single_get_portfolio_data_api,
+    Asset,
+    ETFInfo,
 )
 
 
@@ -80,8 +73,8 @@ def vg_holdings_summary_sheet(df: pd.DataFrame, ticker: str) -> Dict[str, int]:
         lambda row: row["percentWeight"] * row["YTM"],
         axis=1,
     )
-    
-    if (ticker != "EDV"):
+
+    if ticker != "EDV":
         temp_df["Weighted Current Yield"] = df.apply(
             lambda row: row["percentWeight"] * row["currentYield"],
             axis=1,
@@ -228,9 +221,7 @@ def vg_build_summary_book(
             )
 
         fund_data_path = get_yahoofinance_data_file_path_by_ticker(ticker)
-        fund_flow_path = vg_get_fund_flow_file_path_by_ticker(
-            ticker, "vg_fund_flow_data"
-        )
+        fund_flow_path = get_fund_flow_file_path_by_ticker(ticker)
         ticker_holding_dfs[ticker][1] = vg_daily_data(
             ticker, fund_data_path, fund_flow_path
         )
