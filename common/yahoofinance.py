@@ -111,18 +111,22 @@ def multi_download_historical_data_yahoofinance(
     to_date: date,
     raw_path: str,
     cj: http.cookiejar = None,
+    max_date=False,
     big_wb=False,
     open_chrome=False,
 ) -> Dict[str, pd.DataFrame]:
     from_sec = round(from_date.timestamp())
-    to_sec = round(to_date.timestamp())
+    to_sec = (
+        round(to_date.timestamp())
+        if not max_date
+        else round(datetime.today().timestamp())
+    )
 
     async def fetch(
-        session: aiohttp.ClientSession, url: str, curr_ticker: str
+        session: aiohttp.ClientSession, url: str, curr_ticker: str, crumb: str
     ) -> pd.DataFrame:
         try:
             webbrowser.open(url) if open_chrome else None
-            _, crumb = get_yahoofinance_download_auth("/v1/test/getcrumb", cj, True)
             headers = get_yahoofinance_download_auth(
                 f"/v7/finance/download/{curr_ticker}?period1={from_sec}&amp;period2={to_sec}&amp;interval=1d&amp;events=history&amp;includeAdjustedClose=true&crumb={crumb}&formatted=false&region=US&lang=en-US",
                 cj,
@@ -163,9 +167,24 @@ def multi_download_historical_data_yahoofinance(
 
     async def get_promises(session: aiohttp.ClientSession):
         tasks = []
+        _, crumb = get_yahoofinance_download_auth("/v1/test/getcrumb", cj, True)
         for ticker in tickers:
+            if max_date:
+                try:
+                    headers = get_yahoofinance_download_auth(
+                        f"v8/finance/chart/{ticker}?formatted=true&crumb={crumb}&lang=en-US&region=US&includeAdjustedClose=true&corsDomain=finance.yahoo.com",
+                        cj,
+                    )
+                    first_trade_date_url = f"https://query2.finance.yahoo.com/v8/finance/chart/{ticker}?formatted=true&crumb={crumb}&lang=en-US&region=US&includeAdjustedClose=true&corsDomain=finance.yahoo.com"
+                    first_trade_date = requests.get(
+                        first_trade_date_url, headers=headers
+                    ).json()["chart"]["result"][0]["meta"]["firstTradeDate"]
+                    from_sec = round(first_trade_date)
+                except Exception as e:
+                    print("First Trade Date Error", e)
+
             curr_url = f"https://query1.finance.yahoo.com/v7/finance/download/{ticker}?period1={from_sec}&period2={to_sec}&interval=1d&events=history&includeAdjustedClose=true"
-            task = fetch(session, curr_url, ticker)
+            task = fetch(session, curr_url, ticker, crumb)
             tasks.append(task)
 
         return await asyncio.gather(*tasks)
@@ -377,7 +396,7 @@ def get_options_chain_yahoofinance(
     results = asyncio.run(run_fetch_all())
     dfs = {}
     for_big_wb = []
-    
+
     try:
         for options_data, exp_date in results:
             strike_prices = list(options_data.keys())
@@ -432,27 +451,48 @@ def get_options_chain_yahoofinance(
             if big_wb:
                 big_df = pd.DataFrame(for_big_wb)
                 big_df.to_excel(writer, sheet_name="all", index=False)
-                
+
     except Exception as e:
         print(e)
 
     return dfs
 
 
+def get_futures_chain(
+    ticker: str, raw_path: str, cj: http.cookiejar = None, big_wb=False
+):
+    
+    pass
+
+
 if __name__ == "__main__":
-    # from_date = datetime(2023, 1, 1)
-    # to_date = datetime.today()
-    # dict = multi_download_historical_data_yahoofinance(['EDV', "ZROZ"], from_date, to_date, r'C:\Users\chris\trade\curr_pos\utils\yahoofinance')
-    # print(dict)
+    t0 = time.time()
+
+    from_date = datetime(2023, 1, 1)
+    to_date = datetime.today()
+    tickers = ["CCRV", "COMT", "TLTW", "LQDW", "HYGW", "BRLN"]
+    vol_indices = ["^MOVE", "^VIX"]
+    ir_futures = ["ZT=F", "ZF=F", "ZN=F", "ZB=F", "SR3=F"]
+    dict = multi_download_historical_data_yahoofinance(
+        ir_futures,
+        from_date,
+        to_date,
+        r"C:\Users\chris\trade\curr_pos\yahoofinance",
+        max_date=True,
+    )
+    print(dict)
 
     # list = get_option_expiration_dates_yahoofinance('TLT')
     # print(list)
 
-    ticker = "TLT"
-    data = get_options_chain_yahoofinance(
-        ticker,
-        fr"C:\Users\chris\trade\curr_pos\yahoofinance\option_chains\{ticker}_option_chain.xlsx",
-        None,
-        True
-    )
+    # ticker = "CCRV"
+    # data = get_options_chain_yahoofinance(
+    #     ticker,
+    #     fr"C:\Users\chris\trade\curr_pos\yahoofinance\option_chains\{ticker}_option_chain.xlsx",
+    #     None,
+    #     True
+    # )
     # print(data)
+
+    t1 = time.time()
+    print("\033[94m {}\033[00m".format(t1 - t0), " seconds")

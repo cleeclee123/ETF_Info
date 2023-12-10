@@ -238,12 +238,29 @@ if __name__ == "__main__":
     raw_path = r'C:\Users\chris\trade\curr_pos\flows' 
 
     bearer = "0QE2aa6trhK3hOmkf5zXwz6Riy7UWdk4V6HYw3UdZcRZV3myoV9MOfwNLL6FKHrpTN7IF7g12GSZ6r44jAfjte0B3APAaQdWRWZtW2qhYJrAXXwkpYJDFdkCng97prr7N4JAXkCI1zB7EiXrFEY8CIQclMLgQk2XHBZJiqJSIEgtWckHK3UPLfm12X9rhME9ac7gvcF3fWDo8A66X6RHXr3g9jzKeC62th75S1t6juvWjQYDCz65i7UlRfTVWDVV"
-    # tickers = ["USFR", "FLOT", "TFLO", "BIL", "BILS", "TBIL", "VGLT", "VGIT", "VGSH", "EDV", "TLT", "GOVZ", "ZROZ", "SHY", "UTWO", "SPTS", "SPTS", "FTSD", "TUR"]
-    # tickers = ["SPTL", "TMF", "LTPZ", "DFIP", "GOVZ", "TYA"]
+
+    long_bond_tickers = ["EDV", "ZROZ", "TLT", "TMF", "VGLT", "TLTW"]
+    hy_tickers = ["HYG", "HYGW", "SHYG", "USHY", "HYLB", "SJNK", "SPHY"]
+    senior_loan_tickers = ["BKLN", "SRLN", "FTSL", "FLBL", "FLRT", "SEIX", "LONZ", "BRLN"]
+    yen_tickers = ["FXY", "YCS", "YCL"]
+    japan_tickers = ["EWJ", "BBJP", "DXJ", "HEWJ", "JPXN"]
+    jpy_tickers = yen_tickers + japan_tickers
+    meme_tickers = ["SPY", "QQQ", "VOO", "TQQQ", "IWF", "IWM"]
     
-    tickers = ["HYG", "USHY", "JNK", "BKLN", "SHYG", "SRLN", "SJNK", "HYLB", "SPHY", "ANGL", "FTSL", "HYLS", "FALN", "HYGV", "HYS", "BSJP", "BSJO", "YEAR", "PHB", "BSJN", "BBHY", "IBHD", "BSJQ", "HYEM", "IBHE"]
-    # tickers = ["HYDB", ""]
-    data = multi_fetch_fund_flow_data(tickers, bearer, date_from, date_to, raw_path)
+    clo_tickers = ["JAAA", "AAA", "CLOA", "JBBB", "CLOI", "CLOZ", "ICLO"]
+    mbs_tickers = ["JSI", "MBB", "VMBS", "SPMB", "LMBS", "JMBS", "CMBS"]
+    sec_prods_tickers = clo_tickers + mbs_tickers
+    
+    energy_tickers = ["USO", "VDE", "XLE", "XOP"]
+    
+    sp500_tickers = ["SPY",  "IVV", "VOO", "SPXL", "UPRO", "SH", "SPXU", "SPXS", "SPUU"]
+    
+    credit_tickers = ["VGIT", "VGLT", "LQD", "ICSH", "FLOT"]
+    
+    vix_tickers = ["VXX", "UVXY", "SVXY", "VIXY", "SVOL"]
+    
+    all_tickers = long_bond_tickers + hy_tickers + senior_loan_tickers + jpy_tickers + sec_prods_tickers + energy_tickers + sp500_tickers + credit_tickers + vix_tickers
+    data = multi_fetch_fund_flow_data(all_tickers, bearer, date_from, date_to, raw_path)
 
     print(data)
 

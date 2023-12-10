@@ -8,7 +8,7 @@ import codecs
 import lxml.etree as ET_lxml
 from openpyxl import Workbook
 from typing import List, Dict
-from blk import blk_get_headers
+from blackrock.blk import blk_get_headers
 
 
 def blk_get_aladdian_info(
@@ -137,5 +137,6 @@ def blk_get_fund_data(tickers: List[str], raw_path: str, cj: http.cookiejar = No
 
 
 if __name__ == "__main__":
-    dfs = blk_get_fund_data(['TLT', 'GOVZ'], r'C:\Users\chris\trade\curr_pos\blackrock\blk_funds_summary')
+    tickers = ["CCRV", "COMT", "TLTW", "LQDW", "HYGW", "BRLN"]
+    dfs = blk_get_fund_data(tickers, r'C:\Users\chris\trade\curr_pos\blackrock\blk_funds_data')
     print(dfs)

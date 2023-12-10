@@ -59,45 +59,59 @@ def get_holding_file_path_by_ticker(ticker: str, cj: http.cookiejar = None) -> s
     return f"{os.path.dirname(os.path.realpath(__file__))}/vg_funds_holdings_clean_data/{file_name}"
 
 
+def replace_non_integers_with_zero(df):
+    for col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(float)
+    return df
+
+
 def vg_holdings_summary_sheet(df: pd.DataFrame, ticker: str) -> Dict[str, int]:
+    copy = df.copy()
+    copy = replace_non_integers_with_zero(copy)
+    
+    print(copy)
+
     temp_df = pd.DataFrame()
-    temp_df["Weighted Maturity"] = df.apply(
+    
+    temp_df["Weighted Maturity"] = copy.apply(
         lambda row: row["percentWeight"] * row["maturityDate"],
         axis=1,
     )
-    temp_df["Weighted Coupon"] = df.apply(
+    temp_df["Weighted Coupon"] = copy.apply(
         lambda row: row["percentWeight"] * row["couponRate"],
         axis=1,
     )
-    temp_df["Weighted YTM"] = df.apply(
+    temp_df["Weighted YTM"] = copy.apply(
         lambda row: row["percentWeight"] * row["YTM"],
         axis=1,
     )
 
     if ticker != "EDV":
-        temp_df["Weighted Current Yield"] = df.apply(
+        temp_df["Weighted Current Yield"] = copy.apply(
             lambda row: row["percentWeight"] * row["currentYield"],
             axis=1,
         )
     else:
-        temp_df["Weighted Current Yield"] = df.apply(
+        temp_df["Weighted Current Yield"] = copy.apply(
             lambda row: 0 * 0,
             axis=1,
         )
 
-    temp_df["Weighted Mac Duration"] = df.apply(
+    temp_df["Weighted Mac Duration"] = copy.apply(
         lambda row: row["percentWeight"] * row["macaulayDuration"],
         axis=1,
     )
-    temp_df["Weighted Mod Duration"] = df.apply(
+    temp_df["Weighted Mod Duration"] = copy.apply(
         lambda row: row["percentWeight"] * row["modifiedDuration"],
         axis=1,
     )
-    temp_df["Weighted Convexity"] = df.apply(
+    temp_df["Weighted Convexity"] = copy.apply(
         lambda row: row["percentWeight"] * row["convexity"],
         axis=1,
     )
-
+    
+    print(temp_df)
+    
     summary_dict = {}
     summary_dict["Weighted Avg Maturity"] = temp_df["Weighted Maturity"].sum() / 100
     summary_dict["Weighted Avg Coupon"] = temp_df["Weighted Coupon"].sum() / 100
